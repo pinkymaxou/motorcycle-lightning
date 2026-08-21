@@ -1,0 +1,156 @@
+// Protocol contract between firmware and webpage — protobuf everywhere.
+//
+// WebSocket ws://<module>/ws : every WS frame is one binary WsMessage
+//   (Frame ~30 FPS, Status ~15 Hz), pushed by the module.
+// REST (Content-Type: application/x-protobuf):
+//   GET  /api/config   -> Config          PUT  /api/config   <- Config
+//   GET  /api/effects  -> EffectsList     GET  /api/sysinfo  -> SysInfo
+//   POST /api/command  <- Command
+//
+// The firmware encodes with pb_write.cpp and decodes with pb_read.cpp; the
+// page has matching helpers in webui/index.html. Standard proto3 wire format:
+// any protobuf tooling can decode the traffic for debugging. Keep this file
+// and both implementations in sync.
+
+syntax = "proto3";
+
+package motolights;
+
+// ---- WebSocket push ----
+
+// Live LED strip frame (logical RGB, pre-gamma), one per installed strip.
+message Frame {
+  uint32 led_count = 1;
+  bytes  rgb       = 2;   // led_count * 3 bytes, R G B per LED
+  uint32 strip     = 3;   // 0 = strip 1, 1 = strip 2
+}
+
+message Inputs {
+  bool left_blink  = 1;   // left channel in blink mode
+  bool left_on     = 2;   // left signal currently ON (phase)
+  bool right_blink = 3;
+  bool right_on    = 4;
+  bool brake       = 5;
+  bool aux         = 6;
+}
+
+message Status {
+  Inputs inputs          = 1;
+  uint32 blink_period_ms = 2;
+  bool   blink_learned   = 3;
+  bool   override_active = 4;   // simulation override active (inputs ignored)
+  uint32 fps_x10         = 6;
+  uint32 frame_us_max    = 7;
+  uint32 heap_free       = 8;
+  uint32 sta_count       = 9;   // clients on the SoftAP
+  string sta_ip          = 10;  // "" when not connected to the home network
+  string warnings        = 11;
+  string fw              = 12;
+}
+
+message WsMessage {
+  oneof msg {
+    Frame  frame  = 1;
+    Status status = 2;
+  }
+}
+
+// ---- REST ----
+
+message Zones {
+  uint32 left_end   = 1;
+  uint32 center_end = 2;
+}
+
+// Fixed set of Wi-Fi STA settings; pass is write-only (never echoed back).
+message StaConfig {
+  string ssid     = 1;
+  string pass     = 2;   // PUT only; empty = keep current
+  bool   active   = 3;
+  bool   pass_set = 4;   // GET only
+}
+
+// Effect ids are factory ids; empty string = disabled. Zone values follow
+// ZoneId: 0=full 1=left 2=center 3=right.
+message Assignments {
+  string idle       = 1;
+  string brake      = 2;
+  uint32 brake_zone = 3;
+  string turn_on    = 4;
+  string turn_off   = 5;
+  string aux        = 6;
+  uint32 aux_zone   = 7;
+}
+
+// One physical output: its own geometry, hardware type and reaction to the
+// bike's signals. Zone values follow ZoneId: 0=full 1=left 2=center 3=right.
+message Strip {
+  uint32 led_count   = 1;   // 0 = strip not installed
+  uint32 brightness  = 2;
+  // LED controller family (led_strip models): 0=WS2812 1=SK6812 2=WS2811
+  // 3=WS2816 (WS2816 carries 16 bits per color component).
+  uint32 led_model   = 3;
+  uint32 color_order = 4;   // wire order: 0=GRB 1=RGB 2=GRBW 3=RGBW
+  bool   reversed    = 5;
+  Zones  zones       = 6;
+  Assignments assign = 7;
+}
+
+message Config {
+  // Always one entry per strip, in index order (an empty entry still counts).
+  repeated Strip strips   = 1;
+  // Fixed palette in FxColor order (position, brake, turn, white), packed
+  // 0xRRGGBBAA. The alpha byte is the brightness of that color. Shared.
+  repeated fixed32 colors = 2;
+  // Input domain, shared: the bike has one flasher and one brake line.
+  uint32 blink_exit_x10   = 3;
+  uint32 brake_holdoff_s  = 4;
+  StaConfig sta           = 5;
+}
+
+message EffectInfo {
+  string id       = 1;
+  string name     = 2;
+  bool   assigned = 3;
+}
+
+message EffectsList {
+  repeated EffectInfo effects = 1;
+}
+
+// One firmware pin assignment (from main/board_pins.h).
+message PinInfo {
+  string name = 1;
+  uint32 gpio = 2;
+  string desc = 3;   // what the pin does
+}
+
+message SysInfo {
+  string chip         = 1;
+  string fw_version   = 2;
+  string compile_time = 3;
+  string sha256       = 4;
+  string idf          = 5;
+  string mac_sta      = 6;
+  string mac_ap       = 7;
+  string mac_bt       = 8;
+  uint32 heap_free    = 9;
+  uint32 heap_total   = 10;
+  string sta_ip       = 11;
+  string ap_ip        = 12;
+  uint32 uptime_s     = 13;
+  repeated PinInfo pins = 14;
+}
+
+message TestCmd {
+  uint32 event  = 1;   // CondEvent: 0=left 1=right 2=brake 3=aux
+  bool   active = 2;
+}
+
+message Command {
+  oneof cmd {
+    TestCmd test            = 1;
+    bool    override        = 2;
+    bool    restore_defaults = 3;
+  }
+}

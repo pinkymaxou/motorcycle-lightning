@@ -1,0 +1,41 @@
+# nanopb field options — every message is bounded, so nothing allocates.
+#
+# The only callback is the LED frame payload: at 300 LEDs it is 900 bytes,
+# pushed ~30 times per second. A callback encodes straight from the render
+# core's buffer instead of copying it into a struct first.
+motolights.Frame.rgb            type:FT_CALLBACK
+
+motolights.Status.sta_ip        max_size:16
+motolights.Status.warnings      max_size:256
+motolights.Status.fw            max_size:32
+
+motolights.Assignments.idle     max_size:16
+motolights.Assignments.brake    max_size:16
+motolights.Assignments.turn_on  max_size:16
+motolights.Assignments.turn_off max_size:16
+motolights.Assignments.aux      max_size:16
+
+motolights.StaConfig.ssid       max_size:33
+motolights.StaConfig.pass       max_size:65
+
+# Two physical outputs, four palette colors (see sys_config.h).
+motolights.Config.strips        max_count:2
+motolights.Config.colors        max_count:4
+
+motolights.EffectInfo.id        max_size:16
+motolights.EffectInfo.name      max_size:32
+motolights.EffectsList.effects  max_count:12
+
+motolights.PinInfo.name         max_size:32
+motolights.PinInfo.desc         max_size:96
+motolights.SysInfo.chip         max_size:48
+motolights.SysInfo.fw_version   max_size:48
+motolights.SysInfo.compile_time max_size:32
+motolights.SysInfo.sha256       max_size:65
+motolights.SysInfo.idf          max_size:48
+motolights.SysInfo.mac_sta      max_size:18
+motolights.SysInfo.mac_ap       max_size:18
+motolights.SysInfo.mac_bt       max_size:18
+motolights.SysInfo.sta_ip       max_size:16
+motolights.SysInfo.ap_ip        max_size:16
+motolights.SysInfo.pins         max_count:8
