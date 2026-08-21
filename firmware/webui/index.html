@@ -277,6 +277,7 @@ function packedF32(u8){
 const STRIP_COUNT = 2;
 function emptyStrip(){
   return {led_count:0,brightness:160,led_model:0,color_order:0,reversed:false,
+    swap_sides:false,
     zones:{left_end:0,center_end:0},
     assign:{idle:'',brake:'',brake_zone:0,turn_on:'',turn_off:'',aux:'',aux_zone:0}};
 }
@@ -286,7 +287,7 @@ function decodeStrip(u8){
     switch(f){
     case 1:st.led_count=v;break;   case 2:st.brightness=v;break;
     case 3:st.led_model=v;break;   case 4:st.color_order=v;break;
-    case 5:st.reversed=!!v;break;
+    case 5:st.reversed=!!v;break;   case 8:st.swap_sides=!!v;break;
     case 6:pbScan(s,(ff,vv)=>{if(ff===1)st.zones.left_end=vv;
       else if(ff===2)st.zones.center_end=vv;});break;
     case 7:pbScan(s,(ff,vv,ss)=>{
@@ -321,6 +322,7 @@ function encodeStrip(st){
   const w=pbW();
   w.uint(1,st.led_count);w.uint(2,st.brightness);
   w.uint(3,st.led_model);w.uint(4,st.color_order);w.bool(5,st.reversed);
+  w.bool(8,st.swap_sides);
   const z=pbW();z.uintAlways(1,st.zones.left_end);z.uintAlways(2,st.zones.center_end);
   w.bytesAlways(6,Array.from(z.out()));
   const a=pbW();
@@ -448,7 +450,10 @@ const INPUT_LANES=['IN L','IN R','IN BRK','IN AUX'];
 function graphLanes(){
   const lanes=INPUT_LANES.slice();
   if(cfg)cfg.strips.forEach((st,i)=>{
-    if(0!==st.led_count)lanes.push(`S${i+1} L`,`S${i+1} C`,`S${i+1} R`);
+    if(0!==st.led_count){
+      lanes.push(`S${i+1} ${sideOf(st,false)[0]}`,`S${i+1} C`,
+                 `S${i+1} ${sideOf(st,true)[0]}`);
+    }
   });
   return lanes;
 }
@@ -544,7 +549,10 @@ function renderLiveStrips(){
     host.insertAdjacentHTML('beforeend',
       `<div class="striplabel">${STRIP_LABEL(i)} — ${st.led_count} LEDs ·
          feed ${st.reversed?'right':'left'} (LED 1 at the connector)</div>
-       <canvas class="strip" data-live="${i}" width="900" height="44"></canvas>`);
+       <canvas class="strip" data-live="${i}" width="900" height="44"></canvas>
+       <div class="row muted" style="justify-content:space-between;margin:3px 0 0">
+         <span>◀ ${sideOf(st,false)} turn</span><span>${sideOf(st,true)} turn ▶</span>
+       </div>`);
   });
   if(!host.innerHTML)host.innerHTML='<p class="muted">No strip configured.</p>';
 }
@@ -730,6 +738,12 @@ function renderPalette(){
 }
 
 /* ---- setup: one block per strip ---- */
+/* Which turn signal lives at each end of the bar: the low indices are the
+   bike's left unless the strip was installed the other way round. */
+function sideOf(st,highEnd){
+  const left=highEnd===!!st.swap_sides;
+  return left?'LEFT':'RIGHT';
+}
 const LED_MODELS=['WS2812 / WS2812B','SK6812','WS2811','WS2816 (16-bit)'];
 const COLOR_ORDERS=['GRB','RGB','GRBW','RGBW'];
 
@@ -752,10 +766,15 @@ function renderSetup(){
         <label>Color order <select data-sp="${si}:color_order">${opts(COLOR_ORDERS,st.color_order)}</select></label>
         <label><input type="checkbox" data-sp="${si}:reversed"
           ${st.reversed?'checked':''}> reversed direction</label>
+        <label><input type="checkbox" data-sp="${si}:swap_sides"
+          ${st.swap_sides?'checked':''}> swap left/right</label>
       </div>
       <div class="striplabel">Zones — left = turn L · center = brake · right = turn R
         <span class="muted" data-feed="${si}">· feed ${st.reversed?'right':'left'}</span></div>
       <canvas class="strip" data-zc="${si}" width="900" height="30"></canvas>
+      <div class="row muted" style="justify-content:space-between;margin:3px 0 0">
+        <span data-side0="${si}"></span><span data-side1="${si}"></span>
+      </div>
       <div class="row">
         <label>left zone ends at <input type="number" data-sp="${si}:left_end"
           min="0" value="${st.zones.left_end}"></label>
@@ -770,6 +789,7 @@ function renderSetup(){
       const[si,key]=el.dataset.sp.split(':');
       const st=cfg.strips[+si];
       if(key==='reversed')st.reversed=el.checked;
+      else if(key==='swap_sides')st.swap_sides=el.checked;
       else if(key==='left_end')st.zones.left_end=+el.value;
       else if(key==='center_end')st.zones.center_end=+el.value;
       else st[key]=+el.value;
@@ -807,6 +827,10 @@ function drawZones(si){
 
   const note=document.querySelector(`[data-feed="${si}"]`);
   if(note)note.textContent=`· feed ${st.reversed?'right':'left'}`;
+  const s0=document.querySelector(`[data-side0="${si}"]`);
+  const s1=document.querySelector(`[data-side1="${si}"]`);
+  if(s0)s0.textContent=`◀ ${sideOf(st,false)} turn (LED 1)`;
+  if(s1)s1.textContent=`${sideOf(st,true)} turn ▶`;
 }
 
 $('savesetup').onclick=async()=>{

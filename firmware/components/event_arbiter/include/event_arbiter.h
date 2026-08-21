@@ -27,6 +27,7 @@ struct StripSet
     uint16_t center_end;    /* center     = [left_end, center_end) */
     ZoneId   brake_zone;
     ZoneId   aux_zone;
+    bool     swap_sides;   /* low indices are the bike's right */
 
     /* output hardware */
     uint8_t    brightness;

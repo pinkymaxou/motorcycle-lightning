@@ -94,6 +94,10 @@ message Strip {
   bool   reversed    = 5;
   Zones  zones       = 6;
   Assignments assign = 7;
+  // Which end of the strip is the bike's left: false = LED 1 on the left,
+  // true = the strip is installed the other way round (connector on the
+  // right), so the turn signals swap ends.
+  bool   swap_sides  = 8;
 }
 
 message Config {

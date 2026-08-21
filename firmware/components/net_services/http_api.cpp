@@ -139,6 +139,7 @@ void stripToProto(const StripConfig &sc, motolights_Strip *out)
     out->led_model = static_cast<uint32_t>(sc.led_model);
     out->color_order = static_cast<uint32_t>(sc.color_order);
     out->reversed = sc.reversed;
+    out->swap_sides = sc.swap_sides;
 
     out->has_zones = true;
     out->zones.left_end = sc.zone_left_end;
@@ -162,6 +163,7 @@ void stripFromProto(const motolights_Strip &in, StripConfig *sc)
     sc->led_model = static_cast<LedModel>(in.led_model);
     sc->color_order = static_cast<ColorOrder>(in.color_order);
     sc->reversed = in.reversed;
+    sc->swap_sides = in.swap_sides;
     sc->zone_left_end = static_cast<uint16_t>(in.zones.left_end);
     sc->zone_center_end = static_cast<uint16_t>(in.zones.center_end);
     strlcpy(sc->fx_idle, in.assign.idle, sizeof(sc->fx_idle));

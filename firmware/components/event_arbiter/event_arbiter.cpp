@@ -82,6 +82,17 @@ int buildLayers(const CondState &in, const StripSet &set,
         l->t_num = l->t_den = 1;
     }
 
+    /* Zone geometry is fixed (low indices, centre, high indices); which
+     * bike side each end belongs to is an installation detail. A zone keeps
+     * its own sweep direction: the low-index zone always sweeps from its
+     * high end (the centre of the bar) outwards. */
+    const ZoneId low_zone = ZoneId::Left;
+    const ZoneId high_zone = ZoneId::Right;
+    const ZoneId left_zone = set.swap_sides ? high_zone : low_zone;
+    const ZoneId right_zone = set.swap_sides ? low_zone : high_zone;
+    const bool left_mirror = !set.swap_sides;
+    const bool right_mirror = set.swap_sides;
+
     if (nullptr != set.brake && in.brake)
     {
         /* While a turn signal blinks, the brake layer must not paint inside
@@ -92,11 +103,13 @@ int buildLayers(const CondState &in, const StripSet &set,
         zoneRange(set, set.brake_zone, &start, &len);
         uint16_t lo = start;
         uint16_t hi = start + len;
-        if (in.left_blink && lo < set.left_end)
+        const bool low_blinks = set.swap_sides ? in.right_blink : in.left_blink;
+        const bool high_blinks = set.swap_sides ? in.left_blink : in.right_blink;
+        if (low_blinks && lo < set.left_end)
         {
             lo = set.left_end;
         }
-        if (in.right_blink && hi > set.center_end)
+        if (high_blinks && hi > set.center_end)
         {
             hi = set.center_end;
         }
@@ -152,8 +165,8 @@ int buildLayers(const CondState &in, const StripSet &set,
         {
             Fx::FxLayer *const l = &out[n++];
             l->fx = fx;
-            zoneRange(set, ZoneId::Left, &l->zone_start, &l->zone_len);
-            l->mirror = true;
+            zoneRange(set, left_zone, &l->zone_start, &l->zone_len);
+            l->mirror = left_mirror;
             l->t0_ms = t0_l;
             turnTimeScale(fx, in, l);
         }
@@ -165,8 +178,8 @@ int buildLayers(const CondState &in, const StripSet &set,
         {
             Fx::FxLayer *const l = &out[n++];
             l->fx = fx;
-            zoneRange(set, ZoneId::Right, &l->zone_start, &l->zone_len);
-            l->mirror = false;
+            zoneRange(set, right_zone, &l->zone_start, &l->zone_len);
+            l->mirror = right_mirror;
             l->t0_ms = t0_r;
             turnTimeScale(fx, in, l);
         }

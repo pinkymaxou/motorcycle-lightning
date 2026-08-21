@@ -4,7 +4,7 @@
 #include <cstdint>
 #include "effect_model.h"
 
-constexpr uint32_t CFG_VERSION = 5;
+constexpr uint32_t CFG_VERSION = 6;
 constexpr uint16_t CFG_MAX_LEDS = 300;
 constexpr int CFG_STA_SSID_LEN = 33;
 constexpr int CFG_STA_PASS_LEN = 65;
@@ -69,6 +69,10 @@ struct StripConfig
     LedModel led_model;
     ColorOrder color_order;
     bool     reversed;          /* flip strip direction at output */
+    /* Which end of the strip is the bike's left. False: LED 1 is on the
+     * left, so the low indices blink with the left signal. True: the strip
+     * is installed the other way round and the sides swap. */
+    bool     swap_sides;
 
     /* zones: left = [0, left_end), center = [left_end, center_end),
      * right = [center_end, led_count) */

@@ -157,13 +157,15 @@ void brakeFloor(uint8_t *rgb, const EventArbiter::StripSet &set,
     const uint16_t lo = start;
     const uint16_t hi = start + len;
 
+    const bool low_blinks = set.swap_sides ? in.right_blink : in.left_blink;
+    const bool high_blinks = set.swap_sides ? in.left_blink : in.right_blink;
     for (uint16_t i = lo; i < hi; i++)
     {
-        if (in.left_blink && i < set.left_end)
+        if (low_blinks && i < set.left_end)
         {
             continue;
         }
-        if (in.right_blink && i >= set.center_end)
+        if (high_blinks && i >= set.center_end)
         {
             continue;
         }
@@ -301,6 +303,7 @@ esp_err_t applyConfig(const SysConfig &cfg)
         set.led_model = sc.led_model;
         set.color_order = sc.color_order;
         set.reversed = sc.reversed;
+        set.swap_sides = sc.swap_sides;
 
         if (0 == sc.led_count)
         {

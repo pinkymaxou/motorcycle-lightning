@@ -141,6 +141,47 @@ void testBrakeClippedByTurns()
     CHECK(40 == br->zone_start + br->zone_len);
 }
 
+/* A strip installed the other way round swaps which end each turn signal
+ * lights, and each zone keeps sweeping from the centre outwards. */
+void testSwappedSides()
+{
+    StripSet set = makeSet();
+    set.swap_sides = true;
+    CondState in = {};
+    in.period_ms = 750;
+    in.left_blink = true;
+    in.left_on = true;
+    in.left_phase_ms = 1000;
+
+    FxLayer layers[Fx::MAX_LAYERS];
+    int n = EventArbiter::buildLayers(in, set, layers);
+    CHECK(2 == n);                       /* idle + turn */
+    const FxLayer *l = &layers[n - 1];
+    CHECK(28 == l->zone_start);          /* left signal lights the high end */
+    CHECK(12 == l->zone_len);
+    CHECK(!l->mirror);                   /* that zone sweeps low -> high */
+
+    /* the right signal takes the low end, mirrored */
+    in.left_blink = false;
+    in.right_blink = true;
+    in.right_on = true;
+    n = EventArbiter::buildLayers(in, set, layers);
+    CHECK(2 == n);
+    l = &layers[n - 1];
+    CHECK(0 == l->zone_start);
+    CHECK(12 == l->zone_len);
+    CHECK(l->mirror);
+
+    /* brake keeps clear of whichever end is actually blinking */
+    in.brake = true;
+    in.brake_intro = true;
+    n = EventArbiter::buildLayers(in, set, layers);
+    CHECK(3 == n);
+    const FxLayer *const br = &layers[1];
+    CHECK(12 == br->zone_start);         /* low end excluded, not the high one */
+    CHECK(40 == br->zone_start + br->zone_len);
+}
+
 /* Factory effects build natively (no JSON) and resolve palette colors. */
 void testFactoryBuild()
 {
@@ -170,6 +211,7 @@ int main()
     testHazardSyncsOnEarlierChannel();
     testSingleTurnUsesOwnChannel();
     testBrakeClippedByTurns();
+    testSwappedSides();
     testFactoryBuild();
 
     if (0 != g_fail)
