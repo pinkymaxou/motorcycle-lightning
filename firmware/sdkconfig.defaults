@@ -1,0 +1,26 @@
+CONFIG_IDF_TARGET="esp32"
+
+# 1 kHz tick so vTaskDelayUntil(16ms) is precise for the 60 FPS render loop
+CONFIG_FREERTOS_HZ=1000
+
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
+CONFIG_COMPILER_OPTIMIZATION_PERF=y
+
+# HTTP server: wildcard URIs for /api/effects/{id}, roomy headers for browsers,
+# WebSocket push for the live strip view
+CONFIG_HTTPD_MAX_REQ_HDR_LEN=2048
+CONFIG_HTTPD_MAX_URI_LEN=128
+CONFIG_HTTPD_WS_SUPPORT=y
+
+CONFIG_LWIP_MAX_SOCKETS=10
+
+# Render task subscribes to the task WDT
+CONFIG_ESP_TASK_WDT_EN=y
+CONFIG_ESP_TASK_WDT_TIMEOUT_S=5
+
+# RMT ISR + led_strip encoder in IRAM: the strip keeps refreshing during
+# flash writes (config saves) instead of glitching — the ESP32 RMT has no DMA
+CONFIG_RMT_ISR_IRAM_SAFE=y
