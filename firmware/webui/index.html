@@ -375,17 +375,42 @@ document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{
   if(b.dataset.tab==='system'||b.dataset.tab==='pinout')loadSysinfo();
 });
 
-function drawStrip(cv,px){
+/* Room reserved for the feed marker, on whichever end the data enters. */
+const FEED_MARGIN=26;
+/* LED 0 sits at the connector; "reversed" means the connector is the far
+   end of the picture, so the drawing flips with it. */
+function stripGeom(cv,n,feedLeft){
+  return {x0:feedLeft?FEED_MARGIN:0, w:(cv.width-FEED_MARGIN)/n};
+}
+function ledX(cv,n,index,feedLeft){
+  const g=stripGeom(cv,n,feedLeft);
+  return g.x0+index*g.w;
+}
+/* The power/data connector: a plug at the edge and a lead into LED 0. */
+function drawFeed(ctx,cv,feedLeft){
+  const bodyW=9,bodyH=Math.min(20,cv.height-8);
+  const x=feedLeft?4:cv.width-4-bodyW;
+  const y=(cv.height-bodyH)/2;
+  ctx.fillStyle='#ff9f1a';
+  ctx.beginPath();ctx.roundRect(x,y,bodyW,bodyH,2);ctx.fill();
+  ctx.strokeStyle='#ff9f1a';ctx.lineWidth=2;
+  ctx.beginPath();
+  ctx.moveTo(feedLeft?x+bodyW:x, cv.height/2);
+  ctx.lineTo(feedLeft?FEED_MARGIN:cv.width-FEED_MARGIN, cv.height/2);
+  ctx.stroke();
+}
+function drawStrip(cv,px,feedLeft=true){
   const ctx=cv.getContext('2d');
   ctx.fillStyle='#000';ctx.fillRect(0,0,cv.width,cv.height);
-  const n=px.length,w=cv.width/n;
+  const n=px.length,g=stripGeom(cv,n,feedLeft);
   for(let i=0;i<n;i++){
-    const[r,g,b]=px[i];
-    ctx.fillStyle=`rgb(${r},${g},${b})`;
+    const[r,g_,b]=px[i];
+    ctx.fillStyle=`rgb(${r},${g_},${b})`;
     ctx.beginPath();
-    ctx.roundRect(i*w+w*0.12,4,w*0.76,cv.height-8,4);
+    ctx.roundRect(g.x0+i*g.w+g.w*0.12,4,g.w*0.76,cv.height-8,4);
     ctx.fill();
   }
+  drawFeed(ctx,cv,feedLeft);
 }
 
 /* ============ 20 s debug timeline: one sample every 100 ms ============ */
@@ -517,7 +542,8 @@ function renderLiveStrips(){
   cfg.strips.forEach((st,i)=>{
     if(0===st.led_count)return;
     host.insertAdjacentHTML('beforeend',
-      `<div class="striplabel">${STRIP_LABEL(i)} — ${st.led_count} LEDs</div>
+      `<div class="striplabel">${STRIP_LABEL(i)} — ${st.led_count} LEDs ·
+         feed ${st.reversed?'right':'left'} (LED 1 at the connector)</div>
        <canvas class="strip" data-live="${i}" width="900" height="44"></canvas>`);
   });
   if(!host.innerHTML)host.innerHTML='<p class="muted">No strip configured.</p>';
@@ -528,13 +554,14 @@ function drawFrame(strip,n,rgb){
   if(!cv)return;
   const px=new Array(n);
   for(let i=0;i<n;i++)px[i]=[rgb[i*3],rgb[i*3+1],rgb[i*3+2]];
-  drawStrip(cv,px);
   const st=cfg&&cfg.strips[strip];
+  const feedLeft=!(st&&st.reversed);
+  drawStrip(cv,px,feedLeft);
   if(st){
     const ctx=cv.getContext('2d');
     ctx.strokeStyle='#555';ctx.setLineDash([3,3]);
     for(const b of[st.zones.left_end,st.zones.center_end]){
-      const x=b*cv.width/n;
+      const x=ledX(cv,n,b,feedLeft);
       ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,cv.height);ctx.stroke();
     }
     ctx.setLineDash([]);
@@ -726,7 +753,8 @@ function renderSetup(){
         <label><input type="checkbox" data-sp="${si}:reversed"
           ${st.reversed?'checked':''}> reversed direction</label>
       </div>
-      <div class="striplabel">Zones — left = turn L · center = brake · right = turn R</div>
+      <div class="striplabel">Zones — left = turn L · center = brake · right = turn R
+        <span class="muted" data-feed="${si}">· feed ${st.reversed?'right':'left'}</span></div>
       <canvas class="strip" data-zc="${si}" width="900" height="30"></canvas>
       <div class="row">
         <label>left zone ends at <input type="number" data-sp="${si}:left_end"
@@ -767,13 +795,18 @@ function drawZones(si){
   if(!cv)return;
   const st=cfg.strips[si],ctx=cv.getContext('2d');
   const n=st.led_count||1,l=st.zones.left_end,c=st.zones.center_end;
+  const feedLeft=!st.reversed;
   ctx.fillStyle='#000';ctx.fillRect(0,0,cv.width,cv.height);
   if(0===st.led_count)return;
-  const w=cv.width/n;
+  const g=stripGeom(cv,n,feedLeft);
   for(let i=0;i<n;i++){
     ctx.fillStyle=i<l?'#c86400':i<c?'#8c0000':'#c86400';
-    ctx.beginPath();ctx.roundRect(i*w+w*.12,4,w*.76,cv.height-8,3);ctx.fill();
+    ctx.beginPath();ctx.roundRect(g.x0+i*g.w+g.w*.12,4,g.w*.76,cv.height-8,3);ctx.fill();
   }
+  drawFeed(ctx,cv,feedLeft);
+
+  const note=document.querySelector(`[data-feed="${si}"]`);
+  if(note)note.textContent=`· feed ${st.reversed?'right':'left'}`;
 }
 
 $('savesetup').onclick=async()=>{
