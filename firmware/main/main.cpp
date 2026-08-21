@@ -111,7 +111,7 @@ constexpr NetServices::PinDef PINOUT[] = {
     { "Strip 1 data", PIN_STRIP_1,
       "WS2812B data out, main strip (through the PCB's 5V level shifter)" },
     { "Strip 2 data", PIN_STRIP_2,
-      "Reserved second strip output (level-shifted)" },
+      "WS2812B data out, second strip (level-shifted, own config)" },
     { "Input LEFT", PIN_IN_LEFT,
       "Left turn signal, opto-isolated, active low (12V ON pulls it low)" },
     { "Input RIGHT", PIN_IN_RIGHT,
