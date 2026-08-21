@@ -1,0 +1,6 @@
+/* Copy to wifi_creds.h (gitignored) and fill in your home network.
+ * Leave WIFI_STA_SSID empty ("") for SoftAP-only operation. */
+#pragma once
+
+#define WIFI_STA_SSID ""
+#define WIFI_STA_PASS ""
