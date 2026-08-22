@@ -132,6 +132,19 @@
     <table id="systable"><tbody></tbody></table>
     <div class="muted" id="modstatus" style="margin-top:8px">–</div>
   </div>
+  <div class="card">
+    <h2>Firmware update</h2>
+    <p class="muted">Send a new <code>motorcycle_lightning.bin</code>. It goes
+    into the spare slot; the module verifies it, reboots into it, and falls
+    back to the current firmware by itself if the new one fails to come up.
+    The strips may glitch or sit still while it writes.</p>
+    <div class="row">
+      <input type="file" id="otafile" accept=".bin">
+      <button class="btn acc" id="otabtn">Upload &amp; reboot</button>
+      <span class="muted" id="otastate"></span>
+    </div>
+    <div id="otabar" class="otabar" hidden><span id="otafill"></span></div>
+  </div>
 </section>
 
 </main>

@@ -32,3 +32,8 @@ CONFIG_ESP_PANIC_HANDLER_IRAM=y
 # RMT ISR + led_strip encoder in IRAM: the strip keeps refreshing during
 # flash writes (config saves) instead of glitching — the ESP32 RMT has no DMA
 CONFIG_RMT_ISR_IRAM_SAFE=y
+
+# OTA: the bootloader starts a freshly written app in PENDING_VERIFY and rolls
+# back to the previous slot unless the app marks itself valid, which main.cpp
+# only does once the boot sequence completed and the strips are lit.
+CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y

@@ -59,6 +59,11 @@ riding), orange = network error, purple = default config.
 
 After flashing, the page is unreachable until you press the button once.
 
+Firmware updates go over WiFi from the System tab (or
+`curl -X POST --data-binary @firmware/build/motorcycle_lightning.bin
+http://<module>/api/ota`): the image lands in the spare OTA slot and the
+module rolls back on its own if it fails to boot.
+
 Host unit tests (no ESP-IDF needed): `firmware/test/host/run_tests.sh`
 
 After editing anything in `firmware/webui/`, run `firmware/tools/build_webui.sh`

@@ -19,6 +19,10 @@ esp_err_t httpStop();
 
 esp_err_t staticFilesRegister(httpd_handle_t server);
 
+/* POST /api/ota — streams a firmware image into the inactive slot and
+ * reboots into it (ota_update.cpp). */
+esp_err_t otaPost(httpd_req_t* req);
+
 esp_err_t wsStreamStart(httpd_handle_t server);
 void wsStreamStop();
 /* httpd is closing this socket: forget it before the fd number is recycled
