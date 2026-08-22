@@ -2,6 +2,8 @@
  * docs/ws_protocol.proto. All protocol work happens on the httpd task;
  * compiled objects are handed to the render task through RenderCore. */
 #include "net_internal.h"
+#include "tasks.hpp"
+#include "crash_log.h"
 #include "net_services.h"
 
 #include <cstring>
@@ -39,7 +41,6 @@ constexpr const char *CONTENT_TYPE_PB = "application/x-protobuf";
  * the single httpd task, one at a time: these buffers are never re-entered,
  * and a full section config would not fit on an 8 KB stack. */
 constexpr size_t MAX_BODY = motolights_Config_size;
-constexpr size_t HTTPD_STACK_BYTES = 8192;
 constexpr uint16_t HTTPD_MAX_URI_HANDLERS = 12;
 constexpr const char *AP_IP_STR = "192.168.4.1";
 constexpr const char *FW_VERSION_FALLBACK = "unknown";
@@ -438,6 +439,7 @@ esp_err_t hSysinfoGet(httpd_req_t *req)
     strlcpy(msg.sta_ip, wifiStaIp(), sizeof(msg.sta_ip));
     strlcpy(msg.ap_ip, AP_IP_STR, sizeof(msg.ap_ip));
     msg.uptime_s = static_cast<uint32_t>(esp_timer_get_time() / 1000000);
+    strlcpy(msg.crash_log, CrashLog::summary(), sizeof(msg.crash_log));
 
     for (int i = 0; i < m_n_pins && msg.pins_count < ARRAY_LEN(msg.pins); i++)
     {
@@ -546,8 +548,9 @@ esp_err_t httpStart(SysConfig *live_cfg)
     }
 
     httpd_config_t cfg = HTTPD_DEFAULT_CONFIG();
-    cfg.core_id = 0;
-    cfg.stack_size = HTTPD_STACK_BYTES;
+    cfg.core_id = Tasks::HTTPD.core;
+    cfg.stack_size = Tasks::HTTPD.stack_bytes;
+    cfg.task_priority = Tasks::HTTPD.priority;
     cfg.max_uri_handlers = HTTPD_MAX_URI_HANDLERS;
     cfg.lru_purge_enable = true;
     cfg.close_fn = onSockClose;

@@ -16,6 +16,8 @@ This document outlines the coding style for the `oe-heatgrip-gdo` projects.
 - **Classes/Structs**: Use `PascalCase` (e.g., `struct MessagePacket;`).
 - **Enums**: Use `enum class` (scoped enums) with `PascalCase` members (e.g., `enum class DeviceState { ... };`).
 - **Acronyms**: Keep acronyms in uppercase (e.g., `OTA`, `GDO`, `PMK`, `SSID`, `WAP`, `PWM`).
+- **Pointers and references**: The `*` or `&` binds to the **type**, not the
+  name: `const char* name`, `SysConfig* cfg`, `const StripConfig& sc`.
 - **Brackets**: The starting brace `{` **MUST** be on a new line (Allman style).
 
 ### Type Prefixes (Hungarian Notation)

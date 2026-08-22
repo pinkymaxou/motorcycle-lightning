@@ -10,7 +10,9 @@
 namespace LedDriver
 {
 
-/* Call from the render task so the RMT interrupts allocate on its core.
+/* Creates every strip's RMT device and latches all of them black. Callable
+ * from any core — it does the creation on core 1 itself — so the boot
+ * sequence can blank the strips before it does anything that might fail.
  * gpios[] holds one data pin per strip. */
 esp_err_t init(const int *gpios, int count, uint16_t max_leds);
 

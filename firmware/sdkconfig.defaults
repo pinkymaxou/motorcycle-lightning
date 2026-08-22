@@ -17,9 +17,12 @@ CONFIG_HTTPD_WS_SUPPORT=y
 
 CONFIG_LWIP_MAX_SOCKETS=10
 
-# Render task subscribes to the task WDT
+# Render task subscribes to the task WDT, and a stuck task must RESET the
+# module, not just log: frozen lights are worse than dark ones, and the boot
+# sequence latches the strips black before anything else runs.
 CONFIG_ESP_TASK_WDT_EN=y
 CONFIG_ESP_TASK_WDT_TIMEOUT_S=5
+CONFIG_ESP_TASK_WDT_PANIC=y
 
 # RMT ISR + led_strip encoder in IRAM: the strip keeps refreshing during
 # flash writes (config saves) instead of glitching — the ESP32 RMT has no DMA

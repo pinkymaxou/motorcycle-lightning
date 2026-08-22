@@ -45,7 +45,6 @@ void makeFill(FxEffect *fx, const char *id)
 StripConfig makeConfig()
 {
     StripConfig sc = {};
-    sc.brightness = 160;
     sc.n_sections = CFG_DEFAULT_SECTION_COUNT;
     for (int i = 0; i < CFG_DEFAULT_SECTION_COUNT; i++)
     {

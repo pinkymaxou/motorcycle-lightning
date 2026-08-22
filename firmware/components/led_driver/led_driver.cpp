@@ -4,6 +4,7 @@
 #include "led_strip.h"
 #include "soc/soc_caps.h"
 #include "esp_log.h"
+#include "tasks.hpp"
 
 namespace LedDriver
 {
@@ -47,8 +48,16 @@ struct Strip
     bool wide;          /* 16 bits per color component (WS2816) */
 };
 
+/* The creation of the RMT channels is handed to a throwaway task pinned to
+ * the lighting core (all RMT channels must be born there), so init() can be
+ * called from app_main on core 0 — early enough to blank the strips before
+ * anything else in the boot sequence can fail. */
+constexpr uint32_t INIT_TIMEOUT_MS = 2000;
+
 static Strip m_strips[STRIP_COUNT];
 static int m_n_strips;
+static TaskHandle_t m_init_waiter;
+static esp_err_t m_init_err;
 static uint16_t m_max_leds;
 static uint8_t m_gamma_lut[256];
 
@@ -129,6 +138,25 @@ esp_err_t createStrip(const int index)
     return ESP_OK;
 }
 
+void createOnCore1(void *arg)
+{
+    (void)arg;
+    esp_err_t err = ESP_OK;
+    for (int i = 0; i < m_n_strips; i++)
+    {
+        /* createStrip() ends on led_strip_clear(): the strips are latched
+         * black by the time this returns. */
+        const esp_err_t e = createStrip(i);
+        if (ESP_OK != e)
+        {
+            err = e;
+        }
+    }
+    m_init_err = err;
+    xTaskNotifyGive(m_init_waiter);
+    vTaskDelete(nullptr);
+}
+
 inline uint8_t shade(const uint8_t c, const uint8_t brightness)
 {
     return m_gamma_lut[(c * (brightness + 1)) >> 8];
@@ -149,20 +177,22 @@ esp_err_t init(const int *gpios, const int count, const uint16_t max_leds)
     m_max_leds = max_leds;
     m_n_strips = (count < STRIP_COUNT) ? count : STRIP_COUNT;
 
-    esp_err_t err = ESP_OK;
     for (int i = 0; i < m_n_strips; i++)
     {
         m_strips[i].gpio = gpios[i];
         m_strips[i].brightness = 255;
         m_strips[i].model = LedModel::WS2812;
         m_strips[i].order = ColorOrder::GRB;
-        const esp_err_t e = createStrip(i);
-        if (ESP_OK != e)
-        {
-            err = e;
-        }
     }
-    return err;
+
+    m_init_err = ESP_FAIL;
+    m_init_waiter = xTaskGetCurrentTaskHandle();
+    if (pdPASS != Tasks::create(Tasks::STRIP_INIT, createOnCore1, nullptr))
+    {
+        return ESP_FAIL;
+    }
+    ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(INIT_TIMEOUT_MS));
+    return m_init_err;
 }
 
 void setBrightness(const StripId strip, const uint8_t brightness)

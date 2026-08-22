@@ -138,6 +138,7 @@ message SysInfo {
   string ap_ip        = 12;
   uint32 uptime_s     = 13;
   repeated PinInfo pins = 14;
+  string crash_log    = 15;   // "no unexpected reset" / "2 unexpected resets, last: ..."
 }
 
 message TestCmd {

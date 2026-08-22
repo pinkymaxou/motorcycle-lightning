@@ -6,6 +6,7 @@
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "tasks.hpp"
 
 namespace StatusLed
 {
@@ -108,10 +109,9 @@ void createOnCore1(void *arg)
 esp_err_t init(const int gpio)
 {
     m_init_waiter = xTaskGetCurrentTaskHandle();
-    if (pdPASS != xTaskCreatePinnedToCore(createOnCore1, "sled_init", 3072,
-                                          reinterpret_cast<void *>(
-                                              static_cast<intptr_t>(gpio)),
-                                          5, nullptr, 1))
+    if (pdPASS != Tasks::create(Tasks::STATUS_LED_INIT, createOnCore1,
+                                reinterpret_cast<void *>(
+                                    static_cast<intptr_t>(gpio))))
     {
         return ESP_FAIL;
     }

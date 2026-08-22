@@ -18,6 +18,8 @@
 #endif
 #include "config_store.h"
 #include "input_conditioner.h"
+#include "crash_log.h"
+#include "led_driver.h"
 #include "render_core.h"
 #include "net_services.h"
 #include "status_led.h"
@@ -96,6 +98,21 @@ void onConsoleLine(const char *line)
     {
         ESP_LOGI(TAG, "config WiFi is %s", NetServices::running() ? "ON" : "OFF");
     }
+    else if (0 == std::strcmp(line, "crashlog"))
+    {
+        const char *names[CrashLog::CRASH_LOG_ENTRIES];
+        const int n = CrashLog::snapshot(names, CrashLog::CRASH_LOG_ENTRIES);
+        ESP_LOGI(TAG, "%s", CrashLog::summary());
+        for (int i = 0; i < n; i++)
+        {
+            ESP_LOGI(TAG, "  %d: %s", i + 1, names[i]);
+        }
+    }
+    else if (0 == std::strcmp(line, "crashlog clear"))
+    {
+        CrashLog::clear();
+        ESP_LOGI(TAG, "crash log cleared");
+    }
     else if (0 == std::strcmp(line, "reboot"))
     {
         ESP_LOGW(TAG, "rebooting on console request");
@@ -103,7 +120,8 @@ void onConsoleLine(const char *line)
     }
     else
     {
-        ESP_LOGI(TAG, "commands: wifi | wifi on | wifi off | reboot");
+        ESP_LOGI(TAG, "commands: wifi | wifi on | wifi off | crashlog"
+                      " | crashlog clear | reboot");
     }
 }
 
@@ -131,7 +149,18 @@ constexpr NetServices::PinDef PINOUT[] = {
 
 extern "C" void app_main()
 {
-    /* 1. NVS (recover from corruption by erasing) */
+    /* 1. Strips dark, before anything else can fail. A reset leaves the LEDs
+     *    holding their last latched frame as long as 5 V is present, so the
+     *    very first thing the firmware does is latch black: if the boot dies
+     *    from here on, the bar stays off. This is supplementary lighting —
+     *    dark is a correct outcome, a stale or wrong frame is not. */
+    constexpr int STRIP_GPIOS[STRIP_COUNT] = { PIN_STRIP_1, PIN_STRIP_2 };
+    if (ESP_OK != LedDriver::init(STRIP_GPIOS, STRIP_COUNT, CFG_MAX_LEDS))
+    {
+        ESP_LOGE(TAG, "strip init failed — lighting stays dark, check wiring");
+    }
+
+    /* 2. NVS (recover from corruption by erasing) */
     esp_err_t err = nvs_flash_init();
     if (ESP_ERR_NVS_NO_FREE_PAGES == err || ESP_ERR_NVS_NEW_VERSION_FOUND == err)
     {
@@ -139,11 +168,14 @@ extern "C" void app_main()
         ESP_ERROR_CHECK(nvs_flash_init());
     }
 
-    /* 2. status LED */
+    CrashLog::init();
+    ESP_LOGI(TAG, "crash log: %s", CrashLog::summary());
+
+    /* 3. status LED */
     StatusLed::init(PIN_STATUS_LED);
     StatusLed::set(StatusLed::State::Boot);
 
-    /* 3. config (any failure -> compiled defaults, never halt) */
+    /* 4. config (any failure -> compiled defaults, never halt) */
     bool cfg_fallback = false;
     if (ESP_OK != ConfigStore::init() || ESP_OK != ConfigStore::load(&m_cfg))
     {
@@ -160,7 +192,7 @@ extern "C" void app_main()
         ConfigStore::save(&m_cfg);
     }
 
-    /* 4. inputs (with persisted flasher period) + render task.
+    /* 5. inputs (with persisted flasher period) + render task.
      *    Lighting is live from here, on hard-fallback effects. */
     const uint32_t stored_period = ConfigStore::loadBlinkPeriod();
     const InputConditioner::InputPins pins = {
@@ -170,19 +202,18 @@ extern "C" void app_main()
                                            m_cfg.blink_exit_x10));
     InputConditioner::setBrakeHoldoff(
         static_cast<uint32_t>(m_cfg.brake_holdoff_s) * 1000);
-    constexpr int STRIP_GPIOS[STRIP_COUNT] = { PIN_STRIP_1, PIN_STRIP_2 };
-    ESP_ERROR_CHECK(RenderCore::start(STRIP_GPIOS));
+    ESP_ERROR_CHECK(RenderCore::start());
 
-    /* 5. configured effect set (per-effect fallback inside) */
+    /* 6. configured effect set (per-effect fallback inside) */
     RenderCore::applyConfig(m_cfg);
 
-    /* 6. network stays OFF at boot — riding needs no radio. The module
+    /* 7. network stays OFF at boot — riding needs no radio. The module
      *    button brings the config WiFi up on demand. */
     NetServices::setPinout(PINOUT, sizeof(PINOUT) / sizeof(PINOUT[0]));
     ESP_LOGI(TAG, "config WiFi off — press the module button or type "
                   "'wifi on' to enable it");
 
-    /* 7. button hook + serial console ("wifi on" brings the page up) */
+    /* 8. button hook + serial console ("wifi on" brings the page up) */
     UiButton::init(PIN_BUTTON, onButtonPress);
     DevConsole::start(onConsoleLine);
 

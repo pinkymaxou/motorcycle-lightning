@@ -1,4 +1,5 @@
 #include "render_core.h"
+#include "tasks.hpp"
 
 #include <atomic>
 #include <cstdio>
@@ -35,9 +36,6 @@ constexpr uint32_t FRAME_PERIOD_MS = 13;
 constexpr uint32_t FRAME_BUDGET_STATS_MS = 1000;
 constexpr uint8_t BRAKE_RED_FLOOR = 64;
 constexpr int CTRL_QUEUE_DEPTH = 8;
-constexpr uint32_t RENDER_TASK_STACK_BYTES = 6144;
-constexpr UBaseType_t RENDER_TASK_PRIORITY = 10;
-constexpr BaseType_t RENDER_CORE_ID = 1;    /* WiFi/httpd live on core 0 */
 constexpr TickType_t CTRL_SEND_TIMEOUT_MS = 200;
 
 /* One owned effect slot per assignable role. */
@@ -78,7 +76,6 @@ struct RenderCmd
 
 static QueueHandle_t m_ctrl_q;
 static char m_warnings[256];
-static int m_strip_gpios[STRIP_COUNT];
 
 static std::atomic<uint32_t> m_fps_x10;
 static std::atomic<uint32_t> m_frame_us_max;
@@ -218,24 +215,18 @@ void renderTask(void *arg)
 {
     (void)arg;
 
-    /* Init the strips from this task so the RMT interrupts land on core 1. */
-    if (ESP_OK != LedDriver::init(m_strip_gpios, STRIP_COUNT, CFG_MAX_LEDS))
-    {
-        ESP_LOGE(TAG, "strip init failed — lighting dead, check wiring");
-    }
-
     esp_task_wdt_add(nullptr);
+
+    for (int i = 0; i < STRIP_COUNT; i++)
+    {
+        LedDriver::setBrightness(stripAt(i), m_fallback_sets[i].brightness);
+    }
 
     Bundle *cur = nullptr;              /* nullptr = using the static fallback */
     fallbackSet(m_fallback_sets);
     const EventArbiter::StripSet *sets = m_fallback_sets;
 
     static uint8_t m_rgb[CFG_MAX_LEDS * 3];
-
-    for (int i = 0; i < STRIP_COUNT; i++)
-    {
-        LedDriver::setBrightness(stripAt(i), sets[i].brightness);
-    }
 
     uint32_t frames = 0;
     uint32_t fps_mark = nowMs();
@@ -417,21 +408,15 @@ uint16_t getFrame(const StripId strip, uint8_t *out_rgb, const uint16_t max_leds
     return n;
 }
 
-esp_err_t start(const int *strip_gpios)
+esp_err_t start()
 {
-    for (int i = 0; i < STRIP_COUNT; i++)
-    {
-        m_strip_gpios[i] = strip_gpios[i];
-    }
     m_ctrl_q = xQueueCreate(CTRL_QUEUE_DEPTH, sizeof(RenderCmd));
     if (nullptr == m_ctrl_q)
     {
         return ESP_ERR_NO_MEM;
     }
 
-    const BaseType_t ok = xTaskCreatePinnedToCore(
-        renderTask, "render", RENDER_TASK_STACK_BYTES, nullptr,
-        RENDER_TASK_PRIORITY, nullptr, RENDER_CORE_ID);
+    const BaseType_t ok = Tasks::create(Tasks::RENDER, renderTask, nullptr);
     return (pdPASS == ok) ? ESP_OK : ESP_FAIL;
 }
 

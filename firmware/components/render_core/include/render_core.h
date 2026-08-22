@@ -14,7 +14,7 @@ namespace RenderCore
  * lighting is functional from this call on, before any storage is touched.
  * strip_gpios: one WS2812B data pin per strip (initialized from the render
  * task so the RMT interrupts allocate on its core). */
-esp_err_t start(const int *strip_gpios);
+esp_err_t start();
 
 /* Build the full effect set for cfg (factory effects, palette-resolved) and
  * swap it into the render task. Safe to call from boot or httpd context.

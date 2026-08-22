@@ -796,7 +796,7 @@ async function loadSysinfo(){
     const u8=await api('sysinfo');
     const si={pins:[]};
     const S={1:'chip',2:'fw',3:'compile',4:'sha',5:'idf',6:'mac_sta',7:'mac_ap',
-      8:'mac_bt',11:'sta_ip',12:'ap_ip'};
+      8:'mac_bt',11:'sta_ip',12:'ap_ip',15:'crash_log'};
     pbScan(u8,(f,v,s)=>{
       if(S[f]&&s)si[S[f]]=TDEC.decode(s);
       else if(f===9)si.heap_free=v;
@@ -819,6 +819,7 @@ async function loadSysinfo(){
       ['Memory',`${si.heap_free} / ${si.heap_total}`],
       ['WiFi (STA)',si.sta_ip||'—'],['WiFi (Soft-AP)',si.ap_ip],
       ['Uptime',fmtUptime(si.uptime||0)],
+      ['Unexpected resets',si.crash_log],
     ];
     document.querySelector('#systable tbody').innerHTML=rows.map(r=>
       `<tr><td class="muted" style="width:150px">${r[0]}</td>`+

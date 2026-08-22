@@ -195,6 +195,13 @@ esp_err_t load(SysConfig *cfg)
     const esp_err_t err = nvs_get_blob(m_nvs, KEY_SYSCFG, &m_blob, &len);
     if (ESP_OK != err)
     {
+        /* A blob larger than the buffer fails here rather than at the size
+         * check below (that is how a config from an older layout shows up),
+         * so say which error it was instead of falling back silently. */
+        if (ESP_ERR_NVS_NOT_FOUND != err)
+        {
+            ESP_LOGW(TAG, "stored config unreadable: %s", esp_err_to_name(err));
+        }
         return err;
     }
     if (sizeof(m_blob) != len)
