@@ -18,9 +18,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # The image ships a cross toolchain; the host tests need a host one.
-      - name: Ensure a host compiler
-        run: g++ --version || (apt-get update && apt-get install -y --no-install-recommends g++)
+      # The image ships a cross toolchain and the ESP-IDF python env, but not
+      # the protobuf tooling the build generates its bindings with, nor a host
+      # compiler for the unit tests.
+      - name: Build tools the image does not carry
+        shell: bash
+        run: |
+          set -eux
+          apt-get update
+          apt-get install -y --no-install-recommends g++ protobuf-compiler
+          # same packages the project's README asks a developer to install
+          apt-get install -y --no-install-recommends nanopb || true
+          if ! command -v protoc-gen-nanopb; then
+              # The generator must match the runtime vendored in
+              # firmware/components/nanopb — keep this pin in step with it.
+              PY="${IDF_PYTHON_ENV_PATH:-}/bin/python"
+              [ -x "$PY" ] || PY="$(command -v python3)"
+              "$PY" -m pip install "nanopb==0.4.9.1"
+              # console scripts land next to that interpreter
+              dirname "$PY" >> "$GITHUB_PATH"
+              PATH="$(dirname "$PY"):$PATH"
+          fi
+          protoc --version
+          command -v protoc-gen-nanopb
 
       # Pure logic first: blinker, effect evaluator, arbiter. No ESP-IDF
       # needed, and a failure here is the one that matters most.
