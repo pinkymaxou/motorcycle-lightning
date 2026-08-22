@@ -12,11 +12,11 @@ namespace ConfigStore
 namespace
 {
 
-const char *const TAG = "config_nvs";
+const char* const TAG = "config_nvs";
 
-constexpr const char *NVS_NS = "motolight";
-constexpr const char *KEY_SYSCFG = "syscfg";
-constexpr const char *KEY_BLINK_MS = "blinkms";
+constexpr const char* NVS_NS = "motolight";
+constexpr const char* KEY_SYSCFG = "syscfg";
+constexpr const char* KEY_BLINK_MS = "blinkms";
 
 static nvs_handle_t m_nvs;
 
@@ -34,9 +34,9 @@ struct StoredConfig
  * context, whose stacks are not sized for a second copy of the config. */
 static StoredConfig m_blob;
 
-uint32_t configCrc(const SysConfig &cfg)
+uint32_t configCrc(const SysConfig& cfg)
 {
-    return esp_rom_crc32_le(0, reinterpret_cast<const uint8_t *>(&cfg),
+    return esp_rom_crc32_le(0, reinterpret_cast<const uint8_t*>(&cfg),
                             sizeof(cfg));
 }
 
@@ -48,7 +48,7 @@ namespace
 /* Defaults for one strip, from the shared factory layout. Strip 2 ships with
  * no sections (not installed) but sane hardware, so adding a section from the
  * page is all it takes to enable it. */
-void stripDefaults(StripConfig *sc, const bool installed)
+void stripDefaults(StripConfig* sc, const bool installed)
 {
     sc->led_model = LedModel::WS2812;
     sc->color_order = ColorOrder::GRB;
@@ -57,8 +57,8 @@ void stripDefaults(StripConfig *sc, const bool installed)
 
     for (int i = 0; i < CFG_DEFAULT_SECTION_COUNT; i++)
     {
-        const DefaultSection &def = CFG_DEFAULT_SECTIONS[i];
-        SectionConfig *const sec = &sc->sections[i];
+        const DefaultSection& def = CFG_DEFAULT_SECTIONS[i];
+        SectionConfig* const sec = &sc->sections[i];
         sec->led_count = def.led_count;
         sec->reversed = def.reversed;
         sec->turn = def.turn;
@@ -80,12 +80,12 @@ void stripDefaults(StripConfig *sc, const bool installed)
 }
 
 /* A corrupt-but-right-sized blob must not hand out unterminated strings. */
-bool stringOk(const char *s, const size_t cap)
+bool stringOk(const char* s, const size_t cap)
 {
     return nullptr != std::memchr(s, '\0', cap);
 }
 
-bool sectionStringsOk(const SectionConfig &sec)
+bool sectionStringsOk(const SectionConfig& sec)
 {
     return stringOk(sec.fx_idle, sizeof(sec.fx_idle)) &&
            stringOk(sec.fx_aux, sizeof(sec.fx_aux)) &&
@@ -94,7 +94,7 @@ bool sectionStringsOk(const SectionConfig &sec)
            stringOk(sec.fx_turn_off, sizeof(sec.fx_turn_off));
 }
 
-bool stripValid(const StripConfig &sc)
+bool stripValid(const StripConfig& sc)
 {
     if (sc.n_sections > CFG_MAX_SECTIONS)
     {
@@ -108,7 +108,7 @@ bool stripValid(const StripConfig &sc)
     uint32_t total = 0;
     for (int i = 0; i < CFG_MAX_SECTIONS; i++)
     {
-        const SectionConfig &sec = sc.sections[i];
+        const SectionConfig& sec = sc.sections[i];
         /* every slot, used or not: a right-sized but corrupt blob must never
          * hand out an unterminated id */
         if (!sectionStringsOk(sec))
@@ -133,7 +133,7 @@ bool stripValid(const StripConfig &sc)
 
 } // namespace
 
-void defaults(SysConfig *cfg)
+void defaults(SysConfig* cfg)
 {
     std::memset(cfg, 0, sizeof(*cfg));
     cfg->version = CFG_VERSION;
@@ -154,7 +154,7 @@ void defaults(SysConfig *cfg)
     cfg->sta_active = false;
 }
 
-bool validate(const SysConfig *cfg)
+bool validate(const SysConfig* cfg)
 {
     if (CFG_VERSION != cfg->version)
     {
@@ -188,7 +188,7 @@ esp_err_t init()
     return nvs_open(NVS_NS, NVS_READWRITE, &m_nvs);
 }
 
-esp_err_t load(SysConfig *cfg)
+esp_err_t load(SysConfig* cfg)
 {
     size_t len = sizeof(m_blob);
     const esp_err_t err = nvs_get_blob(m_nvs, KEY_SYSCFG, &m_blob, &len);
@@ -225,7 +225,7 @@ esp_err_t load(SysConfig *cfg)
     return ESP_OK;
 }
 
-esp_err_t save(const SysConfig *cfg)
+esp_err_t save(const SysConfig* cfg)
 {
     /* CRC the copy that is about to be written, not the caller's struct:
      * padding bytes are whatever the assignment left behind, and the two

@@ -109,7 +109,7 @@ void testWipeSweep()
     FxEffect fx = {};
     fx.n_steps = 1;
     fx.loop_from = 0;
-    FxStep *const s = &fx.steps[0];
+    FxStep* const s = &fx.steps[0];
     *s = FxStep{};
     s->prim = Fx::Prim::Wipe;
     s->mode = static_cast<uint8_t>(Fx::WipeMode::Low);

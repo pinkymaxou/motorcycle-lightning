@@ -11,11 +11,11 @@ namespace
 extern "C" const uint8_t index_gz_start[] asm("_binary_index_html_gz_start");
 extern "C" const uint8_t index_gz_end[] asm("_binary_index_html_gz_end");
 
-esp_err_t hIndex(httpd_req_t *req)
+esp_err_t hIndex(httpd_req_t* req)
 {
     httpd_resp_set_type(req, "text/html");
     httpd_resp_set_hdr(req, "Content-Encoding", "gzip");
-    return httpd_resp_send(req, reinterpret_cast<const char *>(index_gz_start),
+    return httpd_resp_send(req, reinterpret_cast<const char*>(index_gz_start),
                            index_gz_end - index_gz_start);
 }
 

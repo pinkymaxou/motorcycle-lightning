@@ -90,7 +90,7 @@ struct StripConfig
 
 /* Sum of the section lengths; 0 = strip not installed. Saturates at
  * CFG_MAX_LEDS so callers can size buffers from it unconditionally. */
-inline uint16_t stripTotalLeds(const StripConfig &sc)
+inline uint16_t stripTotalLeds(const StripConfig& sc)
 {
     uint32_t total = 0;
     const int n = (sc.n_sections < CFG_MAX_SECTIONS) ? sc.n_sections

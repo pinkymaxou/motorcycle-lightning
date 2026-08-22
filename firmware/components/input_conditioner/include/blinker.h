@@ -62,11 +62,11 @@ struct BlinkSystem
 };
 
 /* stored_period_ms: persisted value from NVS, or 0 if never learned. */
-void init(BlinkSystem *s, uint32_t stored_period_ms, uint8_t exit_x10);
+void init(BlinkSystem* s, uint32_t stored_period_ms, uint8_t exit_x10);
 
 /* Call at 1 kHz. raw_* are true when the 12V signal is ON (already
  * polarity-corrected: the GPIO reads low-active). */
-void tick(BlinkSystem *s, bool raw_left, bool raw_right,
+void tick(BlinkSystem* s, bool raw_left, bool raw_right,
           bool raw_brake, bool raw_aux, uint32_t now_ms);
 
 } // namespace Blink

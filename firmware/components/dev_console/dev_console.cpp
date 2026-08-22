@@ -19,7 +19,7 @@ constexpr size_t CONSOLE_LINE_MAX = 48;
 
 static LineHandler m_handler;
 
-void consoleTask(void *arg)
+void consoleTask(void* arg)
 {
     (void)arg;
     char line[CONSOLE_LINE_MAX];

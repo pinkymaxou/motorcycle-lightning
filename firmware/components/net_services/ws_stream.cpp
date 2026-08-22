@@ -26,7 +26,7 @@ namespace NetServices
 namespace
 {
 
-const char *const TAG = "ws_stream";
+const char* const TAG = "ws_stream";
 
 constexpr int WS_MAX_CLIENTS = 4;
 constexpr uint64_t PUSH_PERIOD_US = 33 * 1000;  /* ~30 FPS */
@@ -89,7 +89,7 @@ void clientRemove(const int fd)
     }
 }
 
-void sendAll(uint8_t *payload, const size_t len)
+void sendAll(uint8_t* payload, const size_t len)
 {
     httpd_ws_frame_t frame = {};
     frame.type = HTTPD_WS_TYPE_BINARY;
@@ -114,15 +114,15 @@ void sendAll(uint8_t *payload, const size_t len)
 
 struct RgbPayload
 {
-    const uint8_t *data;
+    const uint8_t* data;
     size_t len;
 };
 
 /* The LED payload is the one big field: encode it straight from the render
  * core's buffer instead of copying it into the message struct. */
-bool encodeRgb(pb_ostream_t *stream, const pb_field_t *field, void *const *arg)
+bool encodeRgb(pb_ostream_t* stream, const pb_field_t* field, void* const* arg)
 {
-    const RgbPayload *const payload = static_cast<const RgbPayload *>(*arg);
+    const RgbPayload* const payload = static_cast<const RgbPayload*>(*arg);
     if (!pb_encode_tag_for_field(stream, field))
     {
         return false;
@@ -130,7 +130,7 @@ bool encodeRgb(pb_ostream_t *stream, const pb_field_t *field, void *const *arg)
     return pb_encode_string(stream, payload->data, payload->len);
 }
 
-size_t encodeFrameMsg(const StripId strip, uint8_t *out, const size_t cap)
+size_t encodeFrameMsg(const StripId strip, uint8_t* out, const size_t cap)
 {
     static uint8_t m_rgb[CFG_MAX_LEDS * 3];
 
@@ -158,7 +158,7 @@ size_t encodeFrameMsg(const StripId strip, uint8_t *out, const size_t cap)
     return stream.bytes_written;
 }
 
-size_t encodeStatusMsg(uint8_t *out, const size_t cap)
+size_t encodeStatusMsg(uint8_t* out, const size_t cap)
 {
     CondState in;
     InputConditioner::get(&in);
@@ -167,7 +167,7 @@ size_t encodeStatusMsg(uint8_t *out, const size_t cap)
 
     motolights_WsMessage msg = motolights_WsMessage_init_zero;
     msg.which_msg = motolights_WsMessage_status_tag;
-    motolights_Status &st = msg.msg.status;
+    motolights_Status& st = msg.msg.status;
 
     st.has_inputs = true;
     st.inputs.left_blink = in.left_blink;
@@ -199,7 +199,7 @@ size_t encodeStatusMsg(uint8_t *out, const size_t cap)
 
 /* ---- push work (httpd task context) ---- */
 
-void pushWork(void *arg)
+void pushWork(void* arg)
 {
     (void)arg;
     m_work_pending.store(false);
@@ -226,7 +226,7 @@ void pushWork(void *arg)
     }
 }
 
-void timerCb(void *arg)
+void timerCb(void* arg)
 {
     (void)arg;
     if (nullptr == m_server || 0 == m_n_clients.load())
@@ -249,7 +249,7 @@ void timerCb(void *arg)
 
 /* ---- /ws endpoint ---- */
 
-esp_err_t wsHandler(httpd_req_t *req)
+esp_err_t wsHandler(httpd_req_t* req)
 {
     if (HTTP_GET == req->method)
     {

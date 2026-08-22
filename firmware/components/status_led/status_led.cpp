@@ -41,7 +41,7 @@ static std::atomic<State> m_state{ State::Boot };
 static bool m_phase;
 static TaskHandle_t m_init_waiter;
 
-void tickCb(void *arg)
+void tickCb(void* arg)
 {
     (void)arg;
     m_phase = !m_phase;
@@ -76,7 +76,7 @@ void tickCb(void *arg)
  * mid-stall leaves the source asserted, the other core's shared ISR storms
  * and trips the interrupt watchdog). Channel creation pins the ISR, so create
  * the channel from a throwaway core-1 task. */
-void createOnCore1(void *arg)
+void createOnCore1(void* arg)
 {
     const int gpio = static_cast<int>(reinterpret_cast<intptr_t>(arg));
 
@@ -110,7 +110,7 @@ esp_err_t init(const int gpio)
 {
     m_init_waiter = xTaskGetCurrentTaskHandle();
     if (pdPASS != Tasks::create(Tasks::STATUS_LED_INIT, createOnCore1,
-                                reinterpret_cast<void *>(
+                                reinterpret_cast<void*>(
                                     static_cast<intptr_t>(gpio))))
     {
         return ESP_FAIL;

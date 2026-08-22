@@ -21,10 +21,10 @@ void init();
 
 /* One line for the boot log, the console and the System page, e.g.
  * "3 unexpected resets, last: task watchdog" or "no unexpected reset". */
-const char *summary();
+const char* summary();
 
 /* Oldest first. Returns how many names were written. */
-int snapshot(const char *names[], int max);
+int snapshot(const char* names[], int max);
 
 esp_err_t clear();
 

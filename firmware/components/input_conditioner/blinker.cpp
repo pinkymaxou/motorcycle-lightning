@@ -10,7 +10,7 @@ namespace
 
 /* Debounce: N consecutive samples of the opposite level to flip.
  * Returns +1 on OFF->ON edge, -1 on ON->OFF edge, 0 otherwise. */
-int debounce(BlinkChannel *c, const bool raw)
+int debounce(BlinkChannel* c, const bool raw)
 {
     if (raw == c->debounced)
     {
@@ -26,7 +26,7 @@ int debounce(BlinkChannel *c, const bool raw)
     return 0;
 }
 
-void learnPeriod(BlinkSystem *s, const uint32_t interval_ms)
+void learnPeriod(BlinkSystem* s, const uint32_t interval_ms)
 {
     if (interval_ms < PERIOD_MIN_MS || interval_ms > PERIOD_MAX_MS)
     {
@@ -77,7 +77,7 @@ void learnPeriod(BlinkSystem *s, const uint32_t interval_ms)
     }
 }
 
-void turnTick(BlinkSystem *s, BlinkChannel *c, const bool raw,
+void turnTick(BlinkSystem* s, BlinkChannel* c, const bool raw,
               const uint32_t now_ms)
 {
     const int edge = debounce(c, raw);
@@ -117,7 +117,7 @@ void turnTick(BlinkSystem *s, BlinkChannel *c, const bool raw,
 
 } // namespace
 
-void init(BlinkSystem *s, const uint32_t stored_period_ms, const uint8_t exit_x10)
+void init(BlinkSystem* s, const uint32_t stored_period_ms, const uint8_t exit_x10)
 {
     std::memset(s, 0, sizeof(*s));
     if (stored_period_ms >= PERIOD_MIN_MS && stored_period_ms <= PERIOD_MAX_MS)
@@ -134,7 +134,7 @@ void init(BlinkSystem *s, const uint32_t stored_period_ms, const uint8_t exit_x1
     s->brake_holdoff_ms = BRAKE_HOLDOFF_MS;
 }
 
-void tick(BlinkSystem *s, const bool raw_left, const bool raw_right,
+void tick(BlinkSystem* s, const bool raw_left, const bool raw_right,
           const bool raw_brake, const bool raw_aux, const uint32_t now_ms)
 {
     turnTick(s, &s->left, raw_left, now_ms);

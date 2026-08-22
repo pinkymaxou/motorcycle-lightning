@@ -12,10 +12,10 @@ namespace CrashLog
 namespace
 {
 
-const char *const TAG = "crash_log";
+const char* const TAG = "crash_log";
 
-constexpr const char *NVS_NS = "motolight";
-constexpr const char *KEY_LOG = "crashlog";
+constexpr const char* NVS_NS = "motolight";
+constexpr const char* KEY_LOG = "crashlog";
 constexpr uint16_t LOG_VERSION = 1;
 constexpr size_t SUMMARY_LEN = 64;
 
@@ -51,7 +51,7 @@ bool unexpected(const esp_reset_reason_t reason)
     }
 }
 
-const char *reasonName(const esp_reset_reason_t reason)
+const char* reasonName(const esp_reset_reason_t reason)
 {
     switch (reason)
     {
@@ -80,7 +80,7 @@ void buildSummary()
                   reasonName(static_cast<esp_reset_reason_t>(m_log.reason[last])));
 }
 
-esp_err_t openNvs(nvs_handle_t *out)
+esp_err_t openNvs(nvs_handle_t* out)
 {
     return nvs_open(NVS_NS, NVS_READWRITE, out);
 }
@@ -132,12 +132,12 @@ void init()
     buildSummary();
 }
 
-const char *summary()
+const char* summary()
 {
     return m_summary;
 }
 
-int snapshot(const char *names[], const int max)
+int snapshot(const char* names[], const int max)
 {
     const int n = (m_log.used < max) ? m_log.used : max;
     for (int i = 0; i < n; i++)

@@ -12,7 +12,7 @@ namespace LedDriver
 namespace
 {
 
-const char *const TAG = "led_driver";
+const char* const TAG = "led_driver";
 
 constexpr uint32_t RMT_RESOLUTION_HZ = 10 * 1000 * 1000;
 /* RMT memory budget. The chip has RMT_TX_CHANNELS blocks of
@@ -104,7 +104,7 @@ led_color_component_format_t formatFor(const ColorOrder order, const bool wide)
  * run on the render task: every RMT channel has to be born on core 1. */
 esp_err_t createStrip(const int index)
 {
-    Strip &st = m_strips[index];
+    Strip& st = m_strips[index];
     if (nullptr != st.handle)
     {
         led_strip_del(st.handle);
@@ -137,7 +137,7 @@ esp_err_t createStrip(const int index)
     return ESP_OK;
 }
 
-void createOnCore1(void *arg)
+void createOnCore1(void* arg)
 {
     (void)arg;
     esp_err_t err = ESP_OK;
@@ -163,7 +163,7 @@ inline uint8_t shade(const uint8_t c)
 
 } // namespace
 
-esp_err_t init(const int *gpios, const int count, const uint16_t max_leds)
+esp_err_t init(const int* gpios, const int count, const uint16_t max_leds)
 {
     /* Gamma LUT. The browser shows raw authored values on an sRGB display;
      * this LUT makes the (linear) LEDs match that perception. */
@@ -208,7 +208,7 @@ esp_err_t setLedType(const StripId strip, const LedModel model,
     {
         return ESP_ERR_INVALID_ARG;
     }
-    Strip &st = m_strips[stripIndex(strip)];
+    Strip& st = m_strips[stripIndex(strip)];
     if (model == st.model && order == st.order && nullptr != st.handle)
     {
         return ESP_OK;
@@ -220,13 +220,13 @@ esp_err_t setLedType(const StripId strip, const LedModel model,
     return createStrip(stripIndex(strip));
 }
 
-esp_err_t write(const StripId strip, const uint8_t *rgb, uint16_t count)
+esp_err_t write(const StripId strip, const uint8_t* rgb, uint16_t count)
 {
     if (!validStrip(strip) || nullptr == m_strips[stripIndex(strip)].handle)
     {
         return ESP_ERR_INVALID_STATE;
     }
-    const Strip &st = m_strips[stripIndex(strip)];
+    const Strip& st = m_strips[stripIndex(strip)];
     if (count > m_max_leds)
     {
         count = m_max_leds;

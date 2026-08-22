@@ -21,7 +21,7 @@ constexpr BaseType_t SERVICE_CORE = 0;
 
 struct TaskSpec
 {
-    const char *name;
+    const char* name;
     uint32_t    stack_bytes;
     UBaseType_t priority;
     BaseType_t  core;
@@ -48,8 +48,8 @@ constexpr TaskSpec HTTPD = { "httpd", 8192, 5, SERVICE_CORE };
 
 /* One call site for xTaskCreatePinnedToCore, so a task can never be started
  * with parameters that are not the ones written above. */
-inline BaseType_t create(const TaskSpec &spec, const TaskFunction_t fn,
-                         void *const arg, TaskHandle_t *const out = nullptr)
+inline BaseType_t create(const TaskSpec& spec, const TaskFunction_t fn,
+                         void* const arg, TaskHandle_t* const out = nullptr)
 {
     return xTaskCreatePinnedToCore(fn, spec.name, spec.stack_bytes, arg,
                                    spec.priority, out, spec.core);

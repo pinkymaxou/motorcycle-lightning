@@ -29,7 +29,7 @@
 namespace
 {
 
-const char *const TAG = "main";
+const char* const TAG = "main";
 
 constexpr uint32_t HOUSEKEEPING_PERIOD_MS = 250;
 
@@ -52,7 +52,7 @@ void onButtonPress()
     m_net_request.store(NetRequest::Toggle);
 }
 
-void applyNetRequest(const NetRequest req, const char *source)
+void applyNetRequest(const NetRequest req, const char* source)
 {
     const bool running = NetServices::running();
     const bool want_on = (NetRequest::On == req) ||
@@ -84,7 +84,7 @@ void applyNetRequest(const NetRequest req, const char *source)
 
 /* Console commands (see DevConsole). Kept tiny on purpose: the page is the
  * real interface, this only has to unblock a bench session. */
-void onConsoleLine(const char *line)
+void onConsoleLine(const char* line)
 {
     if (0 == std::strcmp(line, "wifi on"))
     {
@@ -100,7 +100,7 @@ void onConsoleLine(const char *line)
     }
     else if (0 == std::strcmp(line, "crashlog"))
     {
-        const char *names[CrashLog::CRASH_LOG_ENTRIES];
+        const char* names[CrashLog::CRASH_LOG_ENTRIES];
         const int n = CrashLog::snapshot(names, CrashLog::CRASH_LOG_ENTRIES);
         ESP_LOGI(TAG, "%s", CrashLog::summary());
         for (int i = 0; i < n; i++)
@@ -228,7 +228,7 @@ extern "C" void app_main()
 
     for (int i = 0; i < STRIP_COUNT; i++)
     {
-        const StripConfig &sc = m_cfg.strips[i];
+        const StripConfig& sc = m_cfg.strips[i];
         const uint16_t total = stripTotalLeds(sc);
         if (0 == total)
         {
@@ -239,8 +239,8 @@ extern "C" void app_main()
         size_t used = 0;
         for (int k = 0; k < sc.n_sections && used + 12 < sizeof(layout); k++)
         {
-            const SectionConfig &sec = sc.sections[k];
-            const char *const turn = (TurnSource::Left == sec.turn)    ? "L"
+            const SectionConfig& sec = sc.sections[k];
+            const char* const turn = (TurnSource::Left == sec.turn)    ? "L"
                                      : (TurnSource::Right == sec.turn) ? "R"
                                                                        : "-";
             used += snprintf(layout + used, sizeof(layout) - used, "[%u %s%s]",

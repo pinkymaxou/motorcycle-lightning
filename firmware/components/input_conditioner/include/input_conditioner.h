@@ -14,14 +14,14 @@ struct InputPins
 };
 
 /* stored_period_ms: persisted flasher period (0 = never learned). */
-esp_err_t init(const InputPins &pins, uint32_t stored_period_ms,
+esp_err_t init(const InputPins& pins, uint32_t stored_period_ms,
                uint8_t exit_x10);
 
-void get(CondState *out);
+void get(CondState* out);
 
 /* True once when a newly learned period should be persisted; clears the flag
  * and returns the value. Call from a low-priority context (NVS write). */
-bool takeDirtyPeriod(uint32_t *period_ms);
+bool takeDirtyPeriod(uint32_t* period_ms);
 
 /* Required brake-release time before the brake effect's intro replays.
  * Safe to call any time (config changes). */

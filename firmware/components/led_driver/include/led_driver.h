@@ -16,7 +16,7 @@ namespace LedDriver
  * from any core — it does the creation on core 1 itself — so the boot
  * sequence can blank the strips before it does anything that might fail.
  * gpios[] holds one data pin per strip. */
-esp_err_t init(const int *gpios, int count, uint16_t max_leds);
+esp_err_t init(const int* gpios, int count, uint16_t max_leds);
 
 void setReversed(StripId strip, bool reversed);
 
@@ -27,6 +27,6 @@ esp_err_t setLedType(StripId strip, LedModel model, ColorOrder order);
 
 /* Push a logical RGB frame (rgb[count*3]) to one strip. Applies direction,
  * gamma. Blocks until the previous refresh is done. */
-esp_err_t write(StripId strip, const uint8_t *rgb, uint16_t count);
+esp_err_t write(StripId strip, const uint8_t* rgb, uint16_t count);
 
 } // namespace LedDriver

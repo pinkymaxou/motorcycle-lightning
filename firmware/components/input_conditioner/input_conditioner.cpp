@@ -66,7 +66,7 @@ bool forcedNow(const CondEvent ev, const uint32_t now)
     return ttlActive(m_force_until[i].load(std::memory_order_relaxed), now);
 }
 
-void sampleCb(void *arg)
+void sampleCb(void* arg)
 {
     (void)arg;
     const uint32_t now_ms = nowMs();
@@ -139,7 +139,7 @@ void sampleCb(void *arg)
 
 } // namespace
 
-esp_err_t init(const InputPins &pins, const uint32_t stored_period_ms,
+esp_err_t init(const InputPins& pins, const uint32_t stored_period_ms,
                const uint8_t exit_x10)
 {
     m_pins = pins;
@@ -206,7 +206,7 @@ esp_err_t init(const InputPins &pins, const uint32_t stored_period_ms,
     return esp_timer_start_periodic(m_timer, 1000); /* 1 ms */
 }
 
-void get(CondState *out)
+void get(CondState* out)
 {
     const uint32_t f = m_flags.load(std::memory_order_acquire);
     out->left_blink  = 0 != (f & F_LEFT_BLINK);
@@ -226,7 +226,7 @@ void get(CondState *out)
     out->period_ms      = m_period.load(std::memory_order_relaxed);
 }
 
-bool takeDirtyPeriod(uint32_t *period_ms)
+bool takeDirtyPeriod(uint32_t* period_ms)
 {
     const uint32_t v = m_dirty_period.exchange(0, std::memory_order_relaxed);
     if (0 == v)

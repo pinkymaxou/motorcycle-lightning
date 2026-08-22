@@ -18,7 +18,7 @@ constexpr uint32_t MIN_PHASE_MS = 100;
 /* Normalize a turn sub-effect's timeline onto the flasher half-period: the
  * effect's full duration plays over exactly one ON (or off) phase, so sweeps
  * stay in sync with the real blinker whatever its rate. */
-void turnTimeScale(const Fx::FxEffect *fx, const CondState &in, Fx::FxLayer *l)
+void turnTimeScale(const Fx::FxEffect* fx, const CondState& in, Fx::FxLayer* l)
 {
     uint32_t phase = in.period_ms / 2;
     if (phase < MIN_PHASE_MS)
@@ -38,10 +38,10 @@ void turnTimeScale(const Fx::FxEffect *fx, const CondState &in, Fx::FxLayer *l)
 
 /* Add one layer covering a whole section; the section's declared direction
  * applies to everything painted there. */
-Fx::FxLayer *pushLayer(const SectionSet &sec, const Fx::FxEffect *fx,
-                       const uint32_t t0_ms, Fx::FxLayer *out, int *n)
+Fx::FxLayer* pushLayer(const SectionSet& sec, const Fx::FxEffect* fx,
+                       const uint32_t t0_ms, Fx::FxLayer* out, int* n)
 {
-    Fx::FxLayer *const l = &out[(*n)++];
+    Fx::FxLayer* const l = &out[(*n)++];
     l->fx = fx;
     l->zone_start = sec.start;
     l->zone_len = sec.len;
@@ -53,7 +53,7 @@ Fx::FxLayer *pushLayer(const SectionSet &sec, const Fx::FxEffect *fx,
 
 } // namespace
 
-void layoutStrip(const StripConfig &sc, StripSet *out)
+void layoutStrip(const StripConfig& sc, StripSet* out)
 {
     *out = StripSet{};
     out->led_model = sc.led_model;
@@ -65,8 +65,8 @@ void layoutStrip(const StripConfig &sc, StripSet *out)
     uint16_t offset = 0;
     for (int i = 0; i < count; i++)
     {
-        const SectionConfig &src = sc.sections[i];
-        SectionSet &dst = out->sections[i];
+        const SectionConfig& src = sc.sections[i];
+        SectionSet& dst = out->sections[i];
         dst.start = offset;
         /* Truncate rather than overrun: the render buffers are sized for
          * CFG_MAX_LEDS and a corrupt config must not reach past them. */
@@ -81,13 +81,13 @@ void layoutStrip(const StripConfig &sc, StripSet *out)
     out->led_count = offset;
 }
 
-bool sectionBlinking(const SectionSet &sec, const CondState &in)
+bool sectionBlinking(const SectionSet& sec, const CondState& in)
 {
     return (TurnSource::Left == sec.turn && in.left_blink) ||
            (TurnSource::Right == sec.turn && in.right_blink);
 }
 
-int buildLayers(const CondState &in, const StripSet &set,
+int buildLayers(const CondState& in, const StripSet& set,
                 Fx::FxLayer out[Fx::MAX_LAYERS])
 {
     /* Hazard (both signals blinking): every section follows ONE master
@@ -119,7 +119,7 @@ int buildLayers(const CondState &in, const StripSet &set,
     int n = 0;
     for (int i = 0; i < set.n_sections; i++)
     {
-        const SectionSet &sec = set.sections[i];
+        const SectionSet& sec = set.sections[i];
         if (0 == sec.len)
         {
             continue;           /* placeholder section */
@@ -149,11 +149,11 @@ int buildLayers(const CondState &in, const StripSet &set,
         if (blinking)
         {
             const bool left = (TurnSource::Left == sec.turn);
-            const Fx::FxEffect *const fx =
+            const Fx::FxEffect* const fx =
                 (left ? on_l : on_r) ? sec.turn_on : sec.turn_off;
             if (nullptr != fx)
             {
-                Fx::FxLayer *const l =
+                Fx::FxLayer* const l =
                     pushLayer(sec, fx, left ? t0_l : t0_r, out, &n);
                 turnTimeScale(fx, in, l);
             }

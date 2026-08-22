@@ -27,7 +27,7 @@ int g_fail;
 
 FxEffect g_on, g_off, g_idle, g_brake, g_aux;
 
-void makeFill(FxEffect *fx, const char *id)
+void makeFill(FxEffect* fx, const char* id)
 {
     std::memset(fx, 0, sizeof(*fx));
     std::strncpy(fx->id, id, Fx::ID_LEN - 1);
@@ -48,8 +48,8 @@ StripConfig makeConfig()
     sc.n_sections = CFG_DEFAULT_SECTION_COUNT;
     for (int i = 0; i < CFG_DEFAULT_SECTION_COUNT; i++)
     {
-        const DefaultSection &def = CFG_DEFAULT_SECTIONS[i];
-        SectionConfig &sec = sc.sections[i];
+        const DefaultSection& def = CFG_DEFAULT_SECTIONS[i];
+        SectionConfig& sec = sc.sections[i];
         sec.led_count = def.led_count;
         sec.reversed = def.reversed;
         sec.turn = def.turn;
@@ -74,7 +74,7 @@ StripSet makeSet()
     EventArbiter::layoutStrip(sc, &set);
     for (int i = 0; i < set.n_sections; i++)
     {
-        SectionSet &sec = set.sections[i];
+        SectionSet& sec = set.sections[i];
         sec.idle = &g_idle;
         sec.brake = &g_brake;
         if (TurnSource::None != sec.turn)
@@ -87,8 +87,8 @@ StripSet makeSet()
 }
 
 /* Find the layer painting a given section with a given effect, or nullptr. */
-const FxLayer *layerOf(const FxLayer *layers, const int n,
-                       const SectionSet &sec, const FxEffect *fx)
+const FxLayer* layerOf(const FxLayer* layers, const int n,
+                       const SectionSet& sec, const FxEffect* fx)
 {
     for (int i = 0; i < n; i++)
     {
@@ -167,8 +167,8 @@ void testHazardSyncsOnEarlierChannel()
 
     FxLayer layers[Fx::MAX_LAYERS];
     int n = EventArbiter::buildLayers(in, set, layers);
-    const FxLayer *tl = layerOf(layers, n, set.sections[0], &g_on);
-    const FxLayer *tr = layerOf(layers, n, set.sections[2], &g_on);
+    const FxLayer* tl = layerOf(layers, n, set.sections[0], &g_on);
+    const FxLayer* tr = layerOf(layers, n, set.sections[2], &g_on);
     CHECK(nullptr != tl && nullptr != tr);
     CHECK(1000 == tl->t0_ms && 1000 == tr->t0_ms);
 
@@ -212,7 +212,7 @@ void testSingleTurnUsesOwnChannel()
 
     FxLayer layers[Fx::MAX_LAYERS];
     const int n = EventArbiter::buildLayers(in, set, layers);
-    const FxLayer *const tr = layerOf(layers, n, set.sections[2], &g_off);
+    const FxLayer* const tr = layerOf(layers, n, set.sections[2], &g_off);
     CHECK(nullptr != tr);
     CHECK(2000 == tr->t0_ms);
     CHECK(nullptr == layerOf(layers, n, set.sections[0], &g_on));
@@ -232,8 +232,8 @@ void testBrakeSkippedInBlinkingSection()
     FxLayer layers[Fx::MAX_LAYERS];
     const int n = EventArbiter::buildLayers(in, set, layers);
     CHECK(nullptr == layerOf(layers, n, set.sections[0], &g_brake));
-    const FxLayer *const centre = layerOf(layers, n, set.sections[1], &g_brake);
-    const FxLayer *const right = layerOf(layers, n, set.sections[2], &g_brake);
+    const FxLayer* const centre = layerOf(layers, n, set.sections[1], &g_brake);
+    const FxLayer* const right = layerOf(layers, n, set.sections[2], &g_brake);
     CHECK(nullptr != centre && nullptr != right);
     CHECK(12 == centre->zone_start && 16 == centre->zone_len);
 }
@@ -252,9 +252,9 @@ void testSectionDirection()
 
     FxLayer layers[Fx::MAX_LAYERS];
     const int n = EventArbiter::buildLayers(in, set, layers);
-    for (const FxEffect *fx : { &g_idle, &g_aux, &g_brake })
+    for (const FxEffect* fx : { &g_idle, &g_aux, &g_brake })
     {
-        const FxLayer *const l = layerOf(layers, n, set.sections[1], fx);
+        const FxLayer* const l = layerOf(layers, n, set.sections[1], fx);
         CHECK(nullptr != l);
         CHECK(nullptr == l || l->mirror);
     }
@@ -272,7 +272,7 @@ void testTurnTimeScale()
 
     FxLayer layers[Fx::MAX_LAYERS];
     int n = EventArbiter::buildLayers(in, set, layers);
-    const FxLayer *l = layerOf(layers, n, set.sections[0], &g_on);
+    const FxLayer* l = layerOf(layers, n, set.sections[0], &g_on);
     CHECK(nullptr != l);
     CHECK(g_on.total_ms == l->t_num && 400 == l->t_den);
 
@@ -298,7 +298,7 @@ void testLayerBudget()
     EventArbiter::layoutStrip(sc, &set);
     for (int i = 0; i < set.n_sections; i++)
     {
-        SectionSet &sec = set.sections[i];
+        SectionSet& sec = set.sections[i];
         sec.idle = &g_idle;
         sec.aux = &g_aux;
         sec.brake = &g_brake;
