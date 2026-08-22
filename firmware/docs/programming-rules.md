@@ -38,7 +38,11 @@ House rules for this codebase. They exist because each one was earned.
    has one shared interrupt source; splitting its handlers across cores
    deadlocks during flash operations (interrupt-watchdog boot loop, learned
    the hard way). RMT ISRs are IRAM-safe (`CONFIG_RMT_ISR_IRAM_SAFE`) so the
-   strip survives flash writes.
+   strip survives flash writes. **Its memory is a hard budget**: 8 blocks of
+   64 symbols, contiguous per channel. The status LED holds one and the two
+   strips split the rest (`RMT_MEM_BLOCK_SYMBOLS` in `led_driver.cpp`, with a
+   `static_assert`). Over-asking does not degrade — the last strip created
+   gets `ESP_ERR_NOT_FOUND` and stays dark.
 7. **Single-writer snapshots over locks.** Cross-task state is published
    with C11 atomics by one writer and read by one reader (input snapshot,
    frame mirror, stats). Blocking flash writes (NVS) happen only in

@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include "led_strip.h"
+#include "soc/soc_caps.h"
 #include "esp_log.h"
 
 namespace LedDriver
@@ -13,10 +14,23 @@ namespace
 const char *const TAG = "led_driver";
 
 constexpr uint32_t RMT_RESOLUTION_HZ = 10 * 1000 * 1000;
-/* Four RMT memory blocks (of the chip's 8): a 160 us refill window so
- * WiFi/httpd bursts can't starve the encoder (no DMA on ESP32). The status
- * LED uses one more block; three stay free. */
-constexpr size_t RMT_MEM_BLOCK_SYMBOLS = 256;
+/* RMT memory budget. The chip has RMT_TX_CHANNELS blocks of
+ * SOC_RMT_MEM_WORDS_PER_CHANNEL symbols and a channel's blocks must be
+ * contiguous, so this is a hard ceiling: ask for more and the last strip
+ * created simply gets no channel (ESP_ERR_NOT_FOUND) instead of degrading.
+ * The status LED holds one block; the strips split the rest evenly. Three
+ * blocks each is a 120 us refill window, enough that a WiFi/httpd burst
+ * can't starve the encoder (the ESP32 has no RMT DMA). */
+constexpr size_t RMT_TX_CHANNELS = 8;
+constexpr size_t RMT_TOTAL_SYMBOLS = RMT_TX_CHANNELS * SOC_RMT_MEM_WORDS_PER_CHANNEL;
+/* Keep in sync with status_led.cpp, which allocates its own channel. */
+constexpr size_t RMT_STATUS_LED_SYMBOLS = SOC_RMT_MEM_WORDS_PER_CHANNEL;
+constexpr size_t RMT_MEM_BLOCK_SYMBOLS =
+    (RMT_TOTAL_SYMBOLS - RMT_STATUS_LED_SYMBOLS) / STRIP_COUNT /
+    SOC_RMT_MEM_WORDS_PER_CHANNEL * SOC_RMT_MEM_WORDS_PER_CHANNEL;
+static_assert(RMT_STATUS_LED_SYMBOLS + RMT_MEM_BLOCK_SYMBOLS * STRIP_COUNT <=
+                  RMT_TOTAL_SYMBOLS,
+              "RMT memory budget exceeded: a strip would get no channel");
 constexpr float GAMMA = 2.2f;
 /* 8-bit value -> 16-bit component (WS2816): 255 * 257 == 65535. */
 constexpr uint32_t WIDE_SCALE = 257;
