@@ -168,7 +168,28 @@ const STRIP_LABEL=i=>`Strip ${i+1}`;
 const COLOR_NAMES=['Position light','Brake','Turn signal','White'];
 const TURN_AMBER=0xFF5A00FF,TURN_RED=0xFF0000FF,COLOR_TURN=2;
 
+/* Everything editable lives in Setup, and it is only applied on Save — so
+   leaving the tab (or the page) with pending edits silently loses them. */
+let dirty=false;
+const LEAVE_WARNING='Unsaved changes in Setup. Leave anyway?';
+function markDirty(){
+  if(dirty)return;
+  dirty=true;
+  $('savesetup').textContent='Save •';
+}
+function clearDirty(){
+  dirty=false;
+  $('savesetup').textContent='Save';
+}
+window.addEventListener('beforeunload',e=>{
+  if(!dirty)return;
+  e.preventDefault();
+  e.returnValue=LEAVE_WARNING;   /* browsers show their own wording */
+});
+
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{
+  if(dirty&&'setup'===document.querySelector('nav button.act').dataset.tab&&
+     !confirm(LEAVE_WARNING))return;
   document.querySelectorAll('nav button').forEach(x=>x.classList.remove('act'));
   document.querySelectorAll('section').forEach(x=>x.classList.remove('act'));
   b.classList.add('act');$('tab-'+b.dataset.tab).classList.add('act');
@@ -621,6 +642,14 @@ function renderSetup(){
 
 function bindSetupHandlers(){
   const host=$('setupstrips');
+  /* One place marks the tab dirty: every control that mutates cfg is inside
+     it, and the reorder/add/delete buttons only ever fire a click. */
+  const tab=$('tab-setup');
+  tab.oninput=markDirty;
+  tab.onchange=markDirty;
+  tab.onclick=e=>{
+    if(e.target.closest('[data-add],[data-move],[data-del]'))markDirty();
+  };
   host.querySelectorAll('[data-sp]').forEach(el=>{
     const upd=()=>{
       const[si,key]=el.dataset.sp.split(':');
@@ -746,6 +775,7 @@ $('savesetup').onclick=async()=>{
     $('stapass').value='';
     cfg=decodeConfig(await api('config'));
     renderAll();
+    clearDirty();
     toast('saved ✓');
   }catch(e){toast(e,true);}
 };
@@ -754,7 +784,7 @@ $('restorebtn').onclick=async()=>{
   try{
     await CMD(cmdRestore());
     cfg=decodeConfig(await api('config'));
-    renderAll();toast('defaults restored');
+    renderAll();clearDirty();toast('defaults restored');
   }catch(e){toast(e,true);}
 };
 
