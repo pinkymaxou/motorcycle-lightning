@@ -1,5 +1,7 @@
 # motorcycle-lightning
 
+[![build](https://github.com/pinkymaxou/motorcycle-lightning/actions/workflows/build.yml/badge.svg)](https://github.com/pinkymaxou/motorcycle-lightning/actions/workflows/build.yml)
+
 Motorcycle turn signal and brake effects on a WS2812B strip, driven by an
 ESP32 (M5Stamp Pico) on a custom opto-isolated interface PCB (see `pcb/`).
 
