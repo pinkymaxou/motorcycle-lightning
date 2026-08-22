@@ -4,6 +4,7 @@
 #include <cstring>
 #include "nvs.h"
 #include "esp_log.h"
+#include "esp_rom_crc.h"
 
 namespace ConfigStore
 {
@@ -18,6 +19,26 @@ constexpr const char *KEY_SYSCFG = "syscfg";
 constexpr const char *KEY_BLINK_MS = "blinkms";
 
 static nvs_handle_t m_nvs;
+
+/* What actually sits in NVS: the struct plus a CRC over it. NVS checks its
+ * own page integrity, so this guards the bytes between here and there — a
+ * half-written or truncated blob of the right length would otherwise sail
+ * through validate() whenever the damaged fields happen to be in range. */
+struct StoredConfig
+{
+    uint32_t  crc;      /* over cfg only, the field itself excluded */
+    SysConfig cfg;
+};
+
+/* 1.5 KB staging: save() and load() are called from low-priority task
+ * context, whose stacks are not sized for a second copy of the config. */
+static StoredConfig m_blob;
+
+uint32_t configCrc(const SysConfig &cfg)
+{
+    return esp_rom_crc32_le(0, reinterpret_cast<const uint8_t *>(&cfg),
+                            sizeof(cfg));
+}
 
 } // namespace
 
@@ -170,23 +191,43 @@ esp_err_t init()
 
 esp_err_t load(SysConfig *cfg)
 {
-    size_t len = sizeof(*cfg);
-    const esp_err_t err = nvs_get_blob(m_nvs, KEY_SYSCFG, cfg, &len);
+    size_t len = sizeof(m_blob);
+    const esp_err_t err = nvs_get_blob(m_nvs, KEY_SYSCFG, &m_blob, &len);
     if (ESP_OK != err)
     {
         return err;
     }
-    if (sizeof(*cfg) != len || !validate(cfg))
+    if (sizeof(m_blob) != len)
     {
-        ESP_LOGW(TAG, "stored config invalid (len=%u)", static_cast<unsigned>(len));
+        ESP_LOGW(TAG, "stored config size %u, expected %u",
+                 static_cast<unsigned>(len), static_cast<unsigned>(sizeof(m_blob)));
+        return ESP_ERR_INVALID_SIZE;
+    }
+    const uint32_t crc = configCrc(m_blob.cfg);
+    if (crc != m_blob.crc)
+    {
+        ESP_LOGW(TAG, "stored config CRC %08x, expected %08x",
+                 static_cast<unsigned>(m_blob.crc), static_cast<unsigned>(crc));
+        return ESP_ERR_INVALID_CRC;
+    }
+    if (!validate(&m_blob.cfg))
+    {
+        ESP_LOGW(TAG, "stored config failed validation");
         return ESP_ERR_INVALID_STATE;
     }
+    *cfg = m_blob.cfg;
     return ESP_OK;
 }
 
 esp_err_t save(const SysConfig *cfg)
 {
-    esp_err_t err = nvs_set_blob(m_nvs, KEY_SYSCFG, cfg, sizeof(*cfg));
+    /* CRC the copy that is about to be written, not the caller's struct:
+     * padding bytes are whatever the assignment left behind, and the two
+     * must agree byte for byte. */
+    m_blob.cfg = *cfg;
+    m_blob.crc = configCrc(m_blob.cfg);
+
+    esp_err_t err = nvs_set_blob(m_nvs, KEY_SYSCFG, &m_blob, sizeof(m_blob));
     if (ESP_OK == err)
     {
         err = nvs_commit(m_nvs);

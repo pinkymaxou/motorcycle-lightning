@@ -43,23 +43,32 @@ House rules for this codebase. They exist because each one was earned.
    strips split the rest (`RMT_MEM_BLOCK_SYMBOLS` in `led_driver.cpp`, with a
    `static_assert`). Over-asking does not degrade — the last strip created
    gets `ESP_ERR_NOT_FOUND` and stays dark.
-7. **Single-writer snapshots over locks.** Cross-task state is published
+7. **The stored config is a raw struct, so it is guarded three ways.**
+   `SysConfig` goes into NVS byte for byte (key `syscfg`, namespace
+   `motolight`), prefixed by a CRC32 over it. `load()` accepts it only if the
+   blob length matches `sizeof(StoredConfig)`, the CRC matches, **and**
+   `validate()` passes; anything else boots the compiled defaults with the
+   purple status LED. Any change to `sys_config.h` — a field added, resized
+   or reordered — therefore means bumping `CFG_VERSION`, because the layout
+   *is* the format. The learned flasher period lives in its own key
+   (`blinkms`) so it survives that reset.
+8. **Single-writer snapshots over locks.** Cross-task state is published
    with C11 atomics by one writer and read by one reader (input snapshot,
    frame mirror, stats). Blocking flash writes (NVS) happen only in
    low-priority task context, never in timers or the render loop.
-8. **No power-save trickery.** The module runs off the bike's battery:
+9. **No power-save trickery.** The module runs off the bike's battery:
    `WIFI_PS_NONE`, `TCP_NODELAY` — latency beats microamps here.
 
 ## Style
 
-9. **No magic numbers or magic strings.** Use `#define`/named constants for
+10. **No magic numbers or magic strings.** Use `#define`/named constants for
    timeouts, thresholds, ids, field numbers. (Factory-effect JSON literals
    are the data itself and are exempt.)
-10. **`const` locals.** Any local variable that is never reassigned after
+11. **`const` locals.** Any local variable that is never reassigned after
     initialization is declared `const` (and `T *const` where it applies).
-11. **Comments state constraints, not narration.** A comment earns its place
+12. **Comments state constraints, not narration.** A comment earns its place
     by explaining what the code cannot say (why a core is pinned, why a
     buffer is static, what invariant a caller must hold).
-12. **Keep the UI minimal.** Factory effects + palette + sections cover the
+13. **Keep the UI minimal.** Factory effects + palette + sections cover the
     product. Any "test/preview" affordance drives the page view AND the real
     strip through the same mechanism, never two separate paths.
