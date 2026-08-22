@@ -166,7 +166,7 @@ const EV={left:0,right:1,brake:2,aux:3};
 /* fixed palette (FxColor order) */
 const STRIP_LABEL=i=>`Strip ${i+1}`;
 const COLOR_NAMES=['Position light','Brake','Turn signal','White'];
-const TURN_AMBER=0xFF5A00FF,TURN_RED=0xFF0000FF,COLOR_TURN=2;
+const TURN_AMBER=0xFF8000FF,TURN_RED=0xFF0000FF,COLOR_TURN=2;
 
 /* Everything editable lives in Setup, and it is only applied on Save — so
    leaving the tab (or the page) with pending edits silently loses them. */

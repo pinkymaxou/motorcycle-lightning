@@ -206,7 +206,7 @@ RgbaColor defaultColor(const FxColor id)
     case FxColor::Brake:
         return RgbaColor{ 0xFF, 0x00, 0x00, 0xFF };
     case FxColor::Turn:
-        return RgbaColor{ 0xFF, 0x5A, 0x00, 0xFF };  /* amber */
+        return RgbaColor{ 0xFF, 0x80, 0x00, 0xFF };  /* amber */
     case FxColor::White:
     default:
         return RgbaColor{ 0xFF, 0xFF, 0xFF, 0xFF };
