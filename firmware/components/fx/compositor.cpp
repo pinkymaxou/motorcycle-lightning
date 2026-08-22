@@ -6,8 +6,8 @@
 namespace Fx
 {
 
-void composite(const FxLayer *layers, const int n_layers, const uint32_t now_ms,
-               uint8_t *rgb, const uint16_t led_count)
+void composite(const FxLayer* layers, const int n_layers, const uint32_t now_ms,
+               uint8_t* rgb, const uint16_t led_count)
 {
     static RgbaColor m_scratch[512];
     constexpr uint16_t SCRATCH_LEN = sizeof(m_scratch) / sizeof(m_scratch[0]);
@@ -16,7 +16,7 @@ void composite(const FxLayer *layers, const int n_layers, const uint32_t now_ms,
 
     for (int li = 0; li < n_layers; li++)
     {
-        const FxLayer *const l = &layers[li];
+        const FxLayer* const l = &layers[li];
         if (nullptr == l->fx || 0 == l->zone_len)
         {
             continue;

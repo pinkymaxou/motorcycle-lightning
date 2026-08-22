@@ -8,11 +8,13 @@
 namespace Fx
 {
 
-constexpr int MAX_LAYERS = 6;
+/* Up to CFG_MAX_SECTIONS sections, each painting idle + aux + brake + turn.
+ * event_arbiter.cpp static_asserts that this covers its budget. */
+constexpr int MAX_LAYERS = 32;
 
 struct FxLayer
 {
-    const FxEffect *fx;             /* nullptr = skip layer */
+    const FxEffect* fx;             /* nullptr = skip layer */
     uint16_t zone_start;
     uint16_t zone_len;
     bool     mirror;
@@ -26,7 +28,7 @@ struct FxLayer
 
 /* Composites into rgb[led_count*3], starting from black.
  * NOT thread-safe (uses a static scratch buffer); render-task only. */
-void composite(const FxLayer *layers, int n_layers, uint32_t now_ms,
-               uint8_t *rgb, uint16_t led_count);
+void composite(const FxLayer* layers, int n_layers, uint32_t now_ms,
+               uint8_t* rgb, uint16_t led_count);
 
 } // namespace Fx

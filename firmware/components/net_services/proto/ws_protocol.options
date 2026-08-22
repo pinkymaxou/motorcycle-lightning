@@ -9,11 +9,13 @@ motolights.Status.sta_ip        max_size:16
 motolights.Status.warnings      max_size:256
 motolights.Status.fw            max_size:32
 
-motolights.Assignments.idle     max_size:16
-motolights.Assignments.brake    max_size:16
-motolights.Assignments.turn_on  max_size:16
-motolights.Assignments.turn_off max_size:16
-motolights.Assignments.aux      max_size:16
+# Sections per strip — mirrors CFG_MAX_SECTIONS in sys_config.h.
+motolights.Strip.sections       max_count:8
+motolights.Section.idle         max_size:16
+motolights.Section.brake        max_size:16
+motolights.Section.turn_on      max_size:16
+motolights.Section.turn_off     max_size:16
+motolights.Section.aux          max_size:16
 
 motolights.StaConfig.ssid       max_size:33
 motolights.StaConfig.pass       max_size:65
@@ -39,3 +41,4 @@ motolights.SysInfo.mac_bt       max_size:18
 motolights.SysInfo.sta_ip       max_size:16
 motolights.SysInfo.ap_ip        max_size:16
 motolights.SysInfo.pins         max_count:8
+motolights.SysInfo.crash_log    max_size:64

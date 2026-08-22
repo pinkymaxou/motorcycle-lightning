@@ -2,9 +2,11 @@
 
 #include <atomic>
 #include "led_strip.h"
+#include "soc/soc_caps.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "tasks.hpp"
 
 namespace StatusLed
 {
@@ -15,6 +17,9 @@ namespace
 /* 2 Hz alternation: the color changes every 250 ms. */
 constexpr uint32_t BLINK_HALF_PERIOD_US = 250 * 1000;
 constexpr uint32_t RMT_RESOLUTION_HZ = 10 * 1000 * 1000;
+/* One block for one pixel; led_driver.cpp budgets the remaining blocks
+ * between the strips and assumes exactly this much is taken here. */
+constexpr size_t RMT_MEM_BLOCK_SYMBOLS = SOC_RMT_MEM_WORDS_PER_CHANNEL;
 
 struct Rgb
 {
@@ -36,7 +41,7 @@ static std::atomic<State> m_state{ State::Boot };
 static bool m_phase;
 static TaskHandle_t m_init_waiter;
 
-void tickCb(void *arg)
+void tickCb(void* arg)
 {
     (void)arg;
     m_phase = !m_phase;
@@ -71,7 +76,7 @@ void tickCb(void *arg)
  * mid-stall leaves the source asserted, the other core's shared ISR storms
  * and trips the interrupt watchdog). Channel creation pins the ISR, so create
  * the channel from a throwaway core-1 task. */
-void createOnCore1(void *arg)
+void createOnCore1(void* arg)
 {
     const int gpio = static_cast<int>(reinterpret_cast<intptr_t>(arg));
 
@@ -88,7 +93,7 @@ void createOnCore1(void *arg)
     led_strip_rmt_config_t rmt_cfg = {};
     rmt_cfg.clk_src = RMT_CLK_SRC_DEFAULT;
     rmt_cfg.resolution_hz = RMT_RESOLUTION_HZ;
-    rmt_cfg.mem_block_symbols = 64;
+    rmt_cfg.mem_block_symbols = RMT_MEM_BLOCK_SYMBOLS;
     rmt_cfg.flags.with_dma = false;
 
     if (ESP_OK != led_strip_new_rmt_device(&strip_cfg, &rmt_cfg, &m_strip))
@@ -104,10 +109,9 @@ void createOnCore1(void *arg)
 esp_err_t init(const int gpio)
 {
     m_init_waiter = xTaskGetCurrentTaskHandle();
-    if (pdPASS != xTaskCreatePinnedToCore(createOnCore1, "sled_init", 3072,
-                                          reinterpret_cast<void *>(
-                                              static_cast<intptr_t>(gpio)),
-                                          5, nullptr, 1))
+    if (pdPASS != Tasks::create(Tasks::STATUS_LED_INIT, createOnCore1,
+                                reinterpret_cast<void*>(
+                                    static_cast<intptr_t>(gpio))))
     {
         return ESP_FAIL;
     }

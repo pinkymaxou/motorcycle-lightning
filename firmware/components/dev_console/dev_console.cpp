@@ -1,4 +1,5 @@
 #include "dev_console.h"
+#include "tasks.hpp"
 
 #include <cctype>
 #include <cstdio>
@@ -13,15 +14,12 @@ namespace DevConsole
 namespace
 {
 
-constexpr uint32_t TASK_STACK_BYTES = 3072;
-constexpr UBaseType_t TASK_PRIORITY = 2;
-constexpr BaseType_t TASK_CORE_ID = 0;    /* never the render core */
 constexpr TickType_t IDLE_POLL_MS = 50;
 constexpr size_t CONSOLE_LINE_MAX = 48;
 
 static LineHandler m_handler;
 
-void consoleTask(void *arg)
+void consoleTask(void* arg)
 {
     (void)arg;
     char line[CONSOLE_LINE_MAX];
@@ -60,10 +58,7 @@ void consoleTask(void *arg)
 esp_err_t start(const LineHandler handler)
 {
     m_handler = handler;
-    const BaseType_t ok = xTaskCreatePinnedToCore(consoleTask, "console",
-                                                  TASK_STACK_BYTES, nullptr,
-                                                  TASK_PRIORITY, nullptr,
-                                                  TASK_CORE_ID);
+    const BaseType_t ok = Tasks::create(Tasks::CONSOLE, consoleTask, nullptr);
     return (pdPASS == ok) ? ESP_OK : ESP_FAIL;
 }
 

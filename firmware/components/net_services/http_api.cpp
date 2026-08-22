@@ -2,6 +2,8 @@
  * docs/ws_protocol.proto. All protocol work happens on the httpd task;
  * compiled objects are handed to the render task through RenderCore. */
 #include "net_internal.h"
+#include "tasks.hpp"
+#include "crash_log.h"
 #include "net_services.h"
 
 #include <cstring>
@@ -14,6 +16,7 @@
 #include "esp_app_desc.h"
 #include "esp_heap_caps.h"
 #include "esp_timer.h"
+#include <unistd.h>
 
 #include "config_store.h"
 #include "render_core.h"
@@ -30,16 +33,19 @@ namespace NetServices
 namespace
 {
 
-const char *const TAG = "http_api";
+const char* const TAG = "http_api";
 
-constexpr const char *CONTENT_TYPE_PB = "application/x-protobuf";
-constexpr size_t MAX_BODY = 2048;
-constexpr size_t HTTPD_STACK_BYTES = 8192;
+constexpr const char* CONTENT_TYPE_PB = "application/x-protobuf";
+/* Sized from the generated worst-case message, so a .proto change resizes
+ * them automatically. Handlers (and httpd_queue_work callbacks) all run on
+ * the single httpd task, one at a time: these buffers are never re-entered,
+ * and a full section config would not fit on an 8 KB stack. */
+constexpr size_t MAX_BODY = motolights_Config_size;
 constexpr uint16_t HTTPD_MAX_URI_HANDLERS = 12;
-constexpr const char *AP_IP_STR = "192.168.4.1";
-constexpr const char *FW_VERSION_FALLBACK = "unknown";
+constexpr const char* AP_IP_STR = "192.168.4.1";
+constexpr const char* FW_VERSION_FALLBACK = "unknown";
 /* PUT sta.pass: omitted keeps the stored password, this sentinel clears it. */
-constexpr const char *STA_PASS_CLEAR_SENTINEL = "-";
+constexpr const char* STA_PASS_CLEAR_SENTINEL = "-";
 
 /* Field numbers, wire format and message limits all come from
  * proto/ws_protocol.proto through nanopb — nothing to keep in sync here. */
@@ -49,21 +55,28 @@ constexpr size_t ARRAY_LEN(T (&)[N])
     return N;
 }
 
-constexpr size_t CONFIG_BUF_BYTES = 1024;
+constexpr size_t CONFIG_BUF_BYTES = motolights_Config_size;
 constexpr size_t EFFECTS_BUF_BYTES = 768;
 constexpr size_t SYSINFO_BUF_BYTES = 1024;
 
 static httpd_handle_t m_server;
-static SysConfig *m_cfg;      /* application's live config */
+static SysConfig* m_cfg;      /* application's live config */
 static esp_timer_handle_t m_sta_apply_timer;
-static const PinDef *m_pins;
+static const PinDef* m_pins;
+static uint8_t m_config_buf[CONFIG_BUF_BYTES];   /* GET encode */
+static uint8_t m_body_buf[MAX_BODY];             /* PUT body */
+static SysConfig m_pending_cfg;                  /* PUT staging */
+
+static_assert(CFG_MAX_SECTIONS ==
+                  sizeof(motolights_Strip::sections) / sizeof(motolights_Section),
+              "proto Strip.sections max_count must match CFG_MAX_SECTIONS");
 static int m_n_pins;
 
 /* Applying a STA change can drop the very connection carrying the request:
  * defer it so the HTTP response gets out first. */
 constexpr uint64_t STA_APPLY_DELAY_US = 300 * 1000;
 
-void staApplyCb(void *arg)
+void staApplyCb(void* arg)
 {
     (void)arg;
     wifiReconfigureSta(m_cfg->sta_ssid, m_cfg->sta_pass, m_cfg->sta_active);
@@ -71,27 +84,27 @@ void staApplyCb(void *arg)
 
 /* ---------- helpers ---------- */
 
-esp_err_t sendPb(httpd_req_t *req, const uint8_t *buf, const size_t len)
+esp_err_t sendPb(httpd_req_t* req, const uint8_t* buf, const size_t len)
 {
     httpd_resp_set_type(req, CONTENT_TYPE_PB);
-    return httpd_resp_send(req, reinterpret_cast<const char *>(buf), len);
+    return httpd_resp_send(req, reinterpret_cast<const char*>(buf), len);
 }
 
-esp_err_t sendError(httpd_req_t *req, const char *status, const char *msg)
+esp_err_t sendError(httpd_req_t* req, const char* status, const char* msg)
 {
     httpd_resp_set_status(req, status);
     httpd_resp_set_type(req, "text/plain");
     return httpd_resp_send(req, msg, HTTPD_RESP_USE_STRLEN);
 }
 
-esp_err_t sendOk(httpd_req_t *req)
+esp_err_t sendOk(httpd_req_t* req)
 {
     httpd_resp_set_type(req, CONTENT_TYPE_PB);
     return httpd_resp_send(req, "", 0);
 }
 
 /* Read the full request body into buf. Returns received length or 0. */
-size_t readBody(httpd_req_t *req, uint8_t *buf, const size_t cap)
+size_t readBody(httpd_req_t* req, uint8_t* buf, const size_t cap)
 {
     if (0 == req->content_len || req->content_len > cap)
     {
@@ -100,7 +113,7 @@ size_t readBody(httpd_req_t *req, uint8_t *buf, const size_t cap)
     size_t got = 0;
     while (got < req->content_len)
     {
-        const int r = httpd_req_recv(req, reinterpret_cast<char *>(buf) + got,
+        const int r = httpd_req_recv(req, reinterpret_cast<char*>(buf) + got,
                                      req->content_len - got);
         if (r <= 0)
         {
@@ -125,59 +138,72 @@ Fx::RgbaColor unpackColor(const uint32_t v)
                           static_cast<uint8_t>(v) };
 }
 
-bool effectIdKnown(const char *id)
+bool effectIdKnown(const char* id)
 {
     return '\0' == id[0] || Fx::factoryExists(id);
 }
 
 /* ---------- Config <-> protobuf (nanopb) ---------- */
 
-void stripToProto(const StripConfig &sc, motolights_Strip *out)
+void sectionToProto(const SectionConfig& sec, motolights_Section* out)
 {
-    out->led_count = sc.led_count;
-    out->brightness = sc.brightness;
+    out->led_count = sec.led_count;
+    out->reversed = sec.reversed;
+    out->turn = static_cast<uint32_t>(sec.turn);
+    strlcpy(out->idle, sec.fx_idle, sizeof(out->idle));
+    strlcpy(out->brake, sec.fx_brake, sizeof(out->brake));
+    strlcpy(out->turn_on, sec.fx_turn_on, sizeof(out->turn_on));
+    strlcpy(out->turn_off, sec.fx_turn_off, sizeof(out->turn_off));
+    strlcpy(out->aux, sec.fx_aux, sizeof(out->aux));
+}
+
+void sectionFromProto(const motolights_Section& in, SectionConfig* sec)
+{
+    sec->led_count = static_cast<uint16_t>(in.led_count);
+    sec->reversed = in.reversed;
+    sec->turn = static_cast<TurnSource>(in.turn);
+    strlcpy(sec->fx_idle, in.idle, sizeof(sec->fx_idle));
+    strlcpy(sec->fx_brake, in.brake, sizeof(sec->fx_brake));
+    strlcpy(sec->fx_turn_on, in.turn_on, sizeof(sec->fx_turn_on));
+    strlcpy(sec->fx_turn_off, in.turn_off, sizeof(sec->fx_turn_off));
+    strlcpy(sec->fx_aux, in.aux, sizeof(sec->fx_aux));
+}
+
+void stripToProto(const StripConfig& sc, motolights_Strip* out)
+{
     out->led_model = static_cast<uint32_t>(sc.led_model);
     out->color_order = static_cast<uint32_t>(sc.color_order);
     out->reversed = sc.reversed;
-    out->swap_sides = sc.swap_sides;
 
-    out->has_zones = true;
-    out->zones.left_end = sc.zone_left_end;
-    out->zones.center_end = sc.zone_center_end;
-
-    out->has_assign = true;
-    strlcpy(out->assign.idle, sc.fx_idle, sizeof(out->assign.idle));
-    strlcpy(out->assign.brake, sc.fx_brake, sizeof(out->assign.brake));
-    out->assign.brake_zone = static_cast<uint32_t>(sc.brake_zone);
-    strlcpy(out->assign.turn_on, sc.fx_turn_on, sizeof(out->assign.turn_on));
-    strlcpy(out->assign.turn_off, sc.fx_turn_off, sizeof(out->assign.turn_off));
-    strlcpy(out->assign.aux, sc.fx_aux, sizeof(out->assign.aux));
-    out->assign.aux_zone = static_cast<uint32_t>(sc.aux_zone);
+    out->sections_count = (sc.n_sections < CFG_MAX_SECTIONS) ? sc.n_sections
+                                                             : CFG_MAX_SECTIONS;
+    for (pb_size_t i = 0; i < out->sections_count; i++)
+    {
+        sectionToProto(sc.sections[i], &out->sections[i]);
+    }
 }
 
-void stripFromProto(const motolights_Strip &in, StripConfig *sc)
+void stripFromProto(const motolights_Strip& in, StripConfig* sc)
 {
     *sc = StripConfig{};        /* a PUT carries the whole strip */
-    sc->led_count = static_cast<uint16_t>(in.led_count);
-    sc->brightness = static_cast<uint8_t>(in.brightness);
     sc->led_model = static_cast<LedModel>(in.led_model);
     sc->color_order = static_cast<ColorOrder>(in.color_order);
     sc->reversed = in.reversed;
-    sc->swap_sides = in.swap_sides;
-    sc->zone_left_end = static_cast<uint16_t>(in.zones.left_end);
-    sc->zone_center_end = static_cast<uint16_t>(in.zones.center_end);
-    strlcpy(sc->fx_idle, in.assign.idle, sizeof(sc->fx_idle));
-    strlcpy(sc->fx_brake, in.assign.brake, sizeof(sc->fx_brake));
-    sc->brake_zone = static_cast<ZoneId>(in.assign.brake_zone);
-    strlcpy(sc->fx_turn_on, in.assign.turn_on, sizeof(sc->fx_turn_on));
-    strlcpy(sc->fx_turn_off, in.assign.turn_off, sizeof(sc->fx_turn_off));
-    strlcpy(sc->fx_aux, in.assign.aux, sizeof(sc->fx_aux));
-    sc->aux_zone = static_cast<ZoneId>(in.assign.aux_zone);
+
+    const pb_size_t count = (in.sections_count < CFG_MAX_SECTIONS)
+                                ? in.sections_count
+                                : CFG_MAX_SECTIONS;
+    sc->n_sections = static_cast<uint8_t>(count);
+    for (pb_size_t i = 0; i < count; i++)
+    {
+        sectionFromProto(in.sections[i], &sc->sections[i]);
+    }
 }
 
-size_t encodeConfig(const SysConfig &cfg, uint8_t *out, const size_t cap)
+size_t encodeConfig(const SysConfig& cfg, uint8_t* out, const size_t cap)
 {
-    motolights_Config msg = motolights_Config_init_zero;
+    static motolights_Config msg;
+    msg = motolights_Config_init_zero;
 
     msg.strips_count = STRIP_COUNT;
     for (int i = 0; i < STRIP_COUNT; i++)
@@ -212,9 +238,10 @@ size_t encodeConfig(const SysConfig &cfg, uint8_t *out, const size_t cap)
 /* The message is authoritative: a PUT replaces the configuration. Absent
  * fields therefore mean "unset" (proto3 omits empty strings, which is how
  * the page clears an effect assignment), not "keep the old value". */
-bool decodeConfig(const uint8_t *data, const size_t len, SysConfig *cfg)
+bool decodeConfig(const uint8_t* data, const size_t len, SysConfig* cfg)
 {
-    motolights_Config msg = motolights_Config_init_zero;
+    static motolights_Config msg;
+    msg = motolights_Config_init_zero;
     pb_istream_t stream = pb_istream_from_buffer(data, len);
     if (!pb_decode(&stream, motolights_Config_fields, &msg))
     {
@@ -241,28 +268,26 @@ bool decodeConfig(const uint8_t *data, const size_t len, SysConfig *cfg)
     return true;
 }
 
-esp_err_t hConfigGet(httpd_req_t *req)
+esp_err_t hConfigGet(httpd_req_t* req)
 {
-    uint8_t out[1024];
-    const size_t len = encodeConfig(*m_cfg, out, sizeof(out));
+    const size_t len = encodeConfig(*m_cfg, m_config_buf, sizeof(m_config_buf));
     if (0 == len)
     {
         return httpd_resp_send_500(req);
     }
-    return sendPb(req, out, len);
+    return sendPb(req, m_config_buf, len);
 }
 
-esp_err_t hConfigPut(httpd_req_t *req)
+esp_err_t hConfigPut(httpd_req_t* req)
 {
-    uint8_t body[MAX_BODY];
-    const size_t len = readBody(req, body, sizeof(body));
+    const size_t len = readBody(req, m_body_buf, sizeof(m_body_buf));
     if (0 == len)
     {
         return sendError(req, "400 Bad Request", "missing/oversized body");
     }
 
-    SysConfig tmp;
-    if (!decodeConfig(body, len, &tmp))
+    SysConfig& tmp = m_pending_cfg;
+    if (!decodeConfig(m_body_buf, len, &tmp))
     {
         return sendError(req, "400 Bad Request", "invalid protobuf");
     }
@@ -279,18 +304,23 @@ esp_err_t hConfigPut(httpd_req_t *req)
     if (!ConfigStore::validate(&tmp))
     {
         return sendError(req, "400 Bad Request",
-                         "invalid config (led_count 1-300, zones ordered)");
+                         "invalid config (max 8 sections and 300 LEDs per strip)");
     }
     for (int i = 0; i < STRIP_COUNT; i++)
     {
-        const StripConfig &sc = tmp.strips[i];
-        const char *const refs[] = { sc.fx_idle, sc.fx_aux, sc.fx_brake,
-                                     sc.fx_turn_on, sc.fx_turn_off };
-        for (size_t k = 0; k < sizeof(refs) / sizeof(refs[0]); k++)
+        const StripConfig& sc = tmp.strips[i];
+        for (int k = 0; k < sc.n_sections; k++)
         {
-            if (!effectIdKnown(refs[k]))
+            const SectionConfig& sec = sc.sections[k];
+            const char* const refs[] = { sec.fx_idle, sec.fx_aux, sec.fx_brake,
+                                         sec.fx_turn_on, sec.fx_turn_off };
+            for (size_t r = 0; r < sizeof(refs) / sizeof(refs[0]); r++)
             {
-                return sendError(req, "400 Bad Request", "unknown effect id");
+                if (!effectIdKnown(refs[r]))
+                {
+                    return sendError(req, "400 Bad Request",
+                                     "unknown effect id");
+                }
             }
         }
     }
@@ -323,7 +353,7 @@ esp_err_t hConfigPut(httpd_req_t *req)
     return sendOk(req);
 }
 
-esp_err_t hEffectsGet(httpd_req_t *req)
+esp_err_t hEffectsGet(httpd_req_t* req)
 {
     static uint8_t out[EFFECTS_BUF_BYTES];
     motolights_EffectsList msg = motolights_EffectsList_init_zero;
@@ -331,18 +361,22 @@ esp_err_t hEffectsGet(httpd_req_t *req)
     const int count = Fx::factoryCount();
     for (int i = 0; i < count && msg.effects_count < ARRAY_LEN(msg.effects); i++)
     {
-        const Fx::FactoryEntry *const fe = Fx::factoryGet(i);
+        const Fx::FactoryEntry* const fe = Fx::factoryGet(i);
         bool assigned = false;
         for (int k = 0; k < STRIP_COUNT && !assigned; k++)
         {
-            const StripConfig &sc = m_cfg->strips[k];
-            assigned = 0 == std::strcmp(sc.fx_idle, fe->id) ||
-                       0 == std::strcmp(sc.fx_aux, fe->id) ||
-                       0 == std::strcmp(sc.fx_brake, fe->id) ||
-                       0 == std::strcmp(sc.fx_turn_on, fe->id) ||
-                       0 == std::strcmp(sc.fx_turn_off, fe->id);
+            const StripConfig& sc = m_cfg->strips[k];
+            for (int j = 0; j < sc.n_sections && !assigned; j++)
+            {
+                const SectionConfig& sec = sc.sections[j];
+                assigned = 0 == std::strcmp(sec.fx_idle, fe->id) ||
+                           0 == std::strcmp(sec.fx_aux, fe->id) ||
+                           0 == std::strcmp(sec.fx_brake, fe->id) ||
+                           0 == std::strcmp(sec.fx_turn_on, fe->id) ||
+                           0 == std::strcmp(sec.fx_turn_off, fe->id);
+            }
         }
-        motolights_EffectInfo &e = msg.effects[msg.effects_count++];
+        motolights_EffectInfo& e = msg.effects[msg.effects_count++];
         strlcpy(e.id, fe->id, sizeof(e.id));
         strlcpy(e.name, fe->name, sizeof(e.name));
         e.assigned = assigned;
@@ -356,9 +390,9 @@ esp_err_t hEffectsGet(httpd_req_t *req)
     return sendPb(req, out, stream.bytes_written);
 }
 
-esp_err_t hSysinfoGet(httpd_req_t *req)
+esp_err_t hSysinfoGet(httpd_req_t* req)
 {
-    const esp_app_desc_t *const app = esp_app_get_description();
+    const esp_app_desc_t* const app = esp_app_get_description();
     esp_chip_info_t chip;
     esp_chip_info(&chip);
 
@@ -380,7 +414,7 @@ esp_err_t hSysinfoGet(httpd_req_t *req)
 
     const struct
     {
-        char *dst;
+        char* dst;
         size_t cap;
         esp_mac_type_t type;
     } macs[] = {
@@ -403,10 +437,11 @@ esp_err_t hSysinfoGet(httpd_req_t *req)
     strlcpy(msg.sta_ip, wifiStaIp(), sizeof(msg.sta_ip));
     strlcpy(msg.ap_ip, AP_IP_STR, sizeof(msg.ap_ip));
     msg.uptime_s = static_cast<uint32_t>(esp_timer_get_time() / 1000000);
+    strlcpy(msg.crash_log, CrashLog::summary(), sizeof(msg.crash_log));
 
     for (int i = 0; i < m_n_pins && msg.pins_count < ARRAY_LEN(msg.pins); i++)
     {
-        motolights_PinInfo &p = msg.pins[msg.pins_count++];
+        motolights_PinInfo& p = msg.pins[msg.pins_count++];
         strlcpy(p.name, m_pins[i].name, sizeof(p.name));
         p.gpio = static_cast<uint32_t>(m_pins[i].gpio);
         strlcpy(p.desc, m_pins[i].desc, sizeof(p.desc));
@@ -421,7 +456,7 @@ esp_err_t hSysinfoGet(httpd_req_t *req)
     return sendPb(req, out, stream.bytes_written);
 }
 
-esp_err_t hCommandPost(httpd_req_t *req)
+esp_err_t hCommandPost(httpd_req_t* req)
 {
     uint8_t body[128];
     const size_t len = readBody(req, body, sizeof(body));
@@ -464,11 +499,22 @@ esp_err_t hCommandPost(httpd_req_t *req)
     return sendOk(req);
 }
 
+/* httpd hands every closing socket here (on its own task). Dropping the fd
+ * from the WebSocket client list before it is recycled is what keeps a push
+ * from landing in an unrelated HTTP response. Closing the fd is our job once
+ * this hook is installed. */
+void onSockClose(httpd_handle_t hd, int sockfd)
+{
+    (void)hd;
+    wsStreamOnSockClose(sockfd);
+    close(sockfd);
+}
+
 struct Route
 {
-    const char *uri;
+    const char* uri;
     httpd_method_t method;
-    esp_err_t (*handler)(httpd_req_t *);
+    esp_err_t (*handler)(httpd_req_t*);
 };
 
 const Route ROUTES[] = {
@@ -481,13 +527,13 @@ const Route ROUTES[] = {
 
 } // namespace
 
-void setPinout(const PinDef *pins, const int count)
+void setPinout(const PinDef* pins, const int count)
 {
     m_pins = pins;
     m_n_pins = count;
 }
 
-esp_err_t httpStart(SysConfig *live_cfg)
+esp_err_t httpStart(SysConfig* live_cfg)
 {
     m_cfg = live_cfg;
 
@@ -500,10 +546,12 @@ esp_err_t httpStart(SysConfig *live_cfg)
     }
 
     httpd_config_t cfg = HTTPD_DEFAULT_CONFIG();
-    cfg.core_id = 0;
-    cfg.stack_size = HTTPD_STACK_BYTES;
+    cfg.core_id = Tasks::HTTPD.core;
+    cfg.stack_size = Tasks::HTTPD.stack_bytes;
+    cfg.task_priority = Tasks::HTTPD.priority;
     cfg.max_uri_handlers = HTTPD_MAX_URI_HANDLERS;
     cfg.lru_purge_enable = true;
+    cfg.close_fn = onSockClose;
 
     esp_err_t err = httpd_start(&m_server, &cfg);
     if (ESP_OK != err)

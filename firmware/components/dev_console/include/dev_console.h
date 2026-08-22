@@ -9,7 +9,7 @@ namespace DevConsole
 {
 
 /* Called from the console task for every complete line received. */
-using LineHandler = void (*)(const char *line);
+using LineHandler = void (*)(const char* line);
 
 esp_err_t start(LineHandler handler);
 

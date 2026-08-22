@@ -1,0 +1,109 @@
+# Everything that can be checked without the board.
+#
+# The container tag must track the ESP-IDF used on the bench (see README):
+# a firmware that builds here but not locally is worse than no CI at all.
+name: build
+
+on:
+  push:
+    branches: [master, 'feature/**']
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  firmware:
+    name: firmware + host tests
+    runs-on: ubuntu-latest
+    container: espressif/idf:release-v6.1
+    steps:
+      - uses: actions/checkout@v4
+
+      # The image ships a cross toolchain; the host tests need a host one.
+      - name: Ensure a host compiler
+        run: g++ --version || (apt-get update && apt-get install -y --no-install-recommends g++)
+
+      # Pure logic first: blinker, effect evaluator, arbiter. No ESP-IDF
+      # needed, and a failure here is the one that matters most.
+      - name: Host unit tests
+        run: firmware/test/host/run_tests.sh
+
+      - name: Config page — ids and symbols
+        run: python3 firmware/tools/check_webui.py firmware/webui
+
+      # The gzipped page is committed, so it can go stale. Compare what the
+      # sources inline to what the asset holds — not the gzip bytes, which
+      # differ between gzip versions.
+      - name: Config page — asset matches sources
+        run: |
+          python3 - <<'PY'
+          import gzip, pathlib, subprocess, sys
+          d = pathlib.Path('firmware/webui')
+          html = (d / 'index.html').read_text()
+          for tag, name, fmt in (
+                  ('<link rel="stylesheet" href="style.css">', 'style.css', '<style>\n%s</style>'),
+                  ('<script src="app.js"></script>', 'app.js', '<script>\n%s</script>')):
+              html = html.replace(tag, fmt % (d / name).read_text())
+          asset = gzip.open('firmware/components/net_services/webui_dist/index.html.gz').read().decode()
+          if html != asset:
+              sys.exit('webui_dist/index.html.gz is stale — run firmware/tools/build_webui.sh')
+          print('asset matches sources')
+          PY
+
+      - name: Build firmware
+        shell: bash
+        run: |
+          . "$IDF_PATH/export.sh"
+          cd firmware
+          idf.py build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firmware
+          path: |
+            firmware/build/motorcycle_lightning.bin
+            firmware/build/motorcycle_lightning.elf
+            firmware/build/motorcycle_lightning.map
+            firmware/build/bootloader/bootloader.bin
+            firmware/build/partition_table/partition-table.bin
+          if-no-files-found: error
+
+  manual:
+    name: user manual
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # A manual that points at a screenshot nobody committed is worse than
+      # one with no screenshots.
+      - name: Every referenced image exists
+        run: |
+          python3 - <<'PY'
+          import pathlib, re, sys
+          root = pathlib.Path('user_manual')
+          missing = []
+          for md in root.rglob('*.md'):
+              for img in re.findall(r'!\[[^\]]*\]\(([^)]+)\)', md.read_text()):
+                  if img.startswith(('http://', 'https://')):
+                      continue
+                  if not (md.parent / img).exists():
+                      missing.append('%s -> %s' % (md, img))
+          if missing:
+              sys.exit('missing images:\n  ' + '\n  '.join(missing))
+          print('all images present')
+          PY
+
+      - name: Install pandoc
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends pandoc
+
+      - name: Render to a single self-contained page
+        run: |
+          pandoc user_manual/README.md \
+            --standalone --embed-resources --toc --toc-depth=2 \
+            --metadata title="MotoLights — user manual" \
+            -o user_manual.html
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: user-manual
+          path: user_manual.html
+          if-no-files-found: error

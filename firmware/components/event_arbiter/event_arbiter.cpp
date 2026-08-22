@@ -6,6 +6,11 @@ namespace EventArbiter
 namespace
 {
 
+/* Every section can paint at most idle, aux, brake and one turn layer. */
+constexpr int LAYERS_PER_SECTION = 4;
+static_assert(Fx::MAX_LAYERS >= CFG_MAX_SECTIONS * LAYERS_PER_SECTION,
+              "Fx::MAX_LAYERS must cover every section's layer budget");
+
 /* A turn sub-effect timeline is normalized onto the flasher half-period;
  * clamp so a bogus tiny period cannot explode the time scale. */
 constexpr uint32_t MIN_PHASE_MS = 100;
@@ -13,7 +18,7 @@ constexpr uint32_t MIN_PHASE_MS = 100;
 /* Normalize a turn sub-effect's timeline onto the flasher half-period: the
  * effect's full duration plays over exactly one ON (or off) phase, so sweeps
  * stay in sync with the real blinker whatever its rate. */
-void turnTimeScale(const Fx::FxEffect *fx, const CondState &in, Fx::FxLayer *l)
+void turnTimeScale(const Fx::FxEffect* fx, const CondState& in, Fx::FxLayer* l)
 {
     uint32_t phase = in.period_ms / 2;
     if (phase < MIN_PHASE_MS)
@@ -31,113 +36,70 @@ void turnTimeScale(const Fx::FxEffect *fx, const CondState &in, Fx::FxLayer *l)
     }
 }
 
-} // namespace
-
-void zoneRange(const StripSet &set, const ZoneId zone,
-               uint16_t *start, uint16_t *len)
+/* Add one layer covering a whole section; the section's declared direction
+ * applies to everything painted there. */
+Fx::FxLayer* pushLayer(const SectionSet& sec, const Fx::FxEffect* fx,
+                       const uint32_t t0_ms, Fx::FxLayer* out, int* n)
 {
-    switch (zone)
-    {
-    case ZoneId::Left:
-        *start = 0;
-        *len = set.left_end;
-        break;
-    case ZoneId::Center:
-        *start = set.left_end;
-        *len = set.center_end - set.left_end;
-        break;
-    case ZoneId::Right:
-        *start = set.center_end;
-        *len = set.led_count - set.center_end;
-        break;
-    default:
-        *start = 0;
-        *len = set.led_count;
-        break;
-    }
+    Fx::FxLayer* const l = &out[(*n)++];
+    l->fx = fx;
+    l->zone_start = sec.start;
+    l->zone_len = sec.len;
+    l->mirror = sec.reversed;
+    l->t0_ms = t0_ms;
+    l->t_num = l->t_den = 1;
+    return l;
 }
 
-int buildLayers(const CondState &in, const StripSet &set,
+} // namespace
+
+void layoutStrip(const StripConfig& sc, StripSet* out)
+{
+    *out = StripSet{};
+    out->led_model = sc.led_model;
+    out->color_order = sc.color_order;
+    out->reversed = sc.reversed;
+
+    const int count = (sc.n_sections < CFG_MAX_SECTIONS) ? sc.n_sections
+                                                         : CFG_MAX_SECTIONS;
+    uint16_t offset = 0;
+    for (int i = 0; i < count; i++)
+    {
+        const SectionConfig& src = sc.sections[i];
+        SectionSet& dst = out->sections[i];
+        dst.start = offset;
+        /* Truncate rather than overrun: the render buffers are sized for
+         * CFG_MAX_LEDS and a corrupt config must not reach past them. */
+        dst.len = (offset + src.led_count > CFG_MAX_LEDS)
+                      ? static_cast<uint16_t>(CFG_MAX_LEDS - offset)
+                      : src.led_count;
+        dst.turn = src.turn;
+        dst.reversed = src.reversed;
+        offset += dst.len;
+    }
+    out->n_sections = static_cast<uint8_t>(count);
+    out->led_count = offset;
+}
+
+bool sectionBlinking(const SectionSet& sec, const CondState& in)
+{
+    return (TurnSource::Left == sec.turn && in.left_blink) ||
+           (TurnSource::Right == sec.turn && in.right_blink);
+}
+
+bool brakeFloorActive(const SectionSet& sec, const CondState& in)
+{
+    return in.brake && sec.brake_floor && !sectionBlinking(sec, in);
+}
+
+int buildLayers(const CondState& in, const StripSet& set,
                 Fx::FxLayer out[Fx::MAX_LAYERS])
 {
-    int n = 0;
-
-    if (nullptr != set.idle)
-    {
-        Fx::FxLayer *const l = &out[n++];
-        l->fx = set.idle;
-        l->zone_start = 0;
-        l->zone_len = set.led_count;
-        l->mirror = false;
-        l->t0_ms = 0;
-        l->t_num = l->t_den = 1;
-    }
-    if (nullptr != set.aux && in.aux)
-    {
-        Fx::FxLayer *const l = &out[n++];
-        l->fx = set.aux;
-        zoneRange(set, set.aux_zone, &l->zone_start, &l->zone_len);
-        l->mirror = false;
-        l->t0_ms = in.aux_edge_ms;
-        l->t_num = l->t_den = 1;
-    }
-
-    /* Zone geometry is fixed (low indices, centre, high indices); which
-     * bike side each end belongs to is an installation detail. A zone keeps
-     * its own sweep direction: the low-index zone always sweeps from its
-     * high end (the centre of the bar) outwards. */
-    const ZoneId low_zone = ZoneId::Left;
-    const ZoneId high_zone = ZoneId::Right;
-    const ZoneId left_zone = set.swap_sides ? high_zone : low_zone;
-    const ZoneId right_zone = set.swap_sides ? low_zone : high_zone;
-    const bool left_mirror = !set.swap_sides;
-    const bool right_mirror = set.swap_sides;
-
-    if (nullptr != set.brake && in.brake)
-    {
-        /* While a turn signal blinks, the brake layer must not paint inside
-         * that turn zone at all — the zone alternates position/turn colors
-         * only. Turn zones are the strip's prefix/suffix, so clipping keeps
-         * the brake range contiguous. */
-        uint16_t start, len;
-        zoneRange(set, set.brake_zone, &start, &len);
-        uint16_t lo = start;
-        uint16_t hi = start + len;
-        const bool low_blinks = set.swap_sides ? in.right_blink : in.left_blink;
-        const bool high_blinks = set.swap_sides ? in.left_blink : in.right_blink;
-        if (low_blinks && lo < set.left_end)
-        {
-            lo = set.left_end;
-        }
-        if (high_blinks && hi > set.center_end)
-        {
-            hi = set.center_end;
-        }
-        if (hi > lo)
-        {
-            Fx::FxLayer *const l = &out[n++];
-            l->fx = set.brake;
-            l->zone_start = lo;
-            l->zone_len = hi - lo;
-            l->mirror = false;
-            /* Quick re-application of the brake (released < holdoff) skips
-             * the effect's intro: shift t0 back so the timeline starts at
-             * its loop/steady segment. */
-            l->t0_ms = in.brake_intro ? in.brake_edge_ms
-                                      : in.brake_edge_ms - set.brake->loop_at_ms;
-            l->t_num = l->t_den = 1;
-        }
-    }
-
-    /* Turn layers: phase-gated — the sub-effect follows the real signal and
-     * restarts its timeline on every debounced phase edge.
-     * Turn effects are authored inner->outer (position 0 = bike center side):
-     * the right zone already runs inner->outer unmirrored (its low LED index
-     * is the inner edge), the left zone must mirror to sweep outward.
-     * Hazard (both blinking): both zones follow ONE master channel — the one
-     * that was already blinking when hazard engaged (earlier blink-mode
-     * entry; tie goes to the left) — so debounce jitter or a pre-existing
-     * blinker can never desync the two zones. */
+    /* Hazard (both signals blinking): every section follows ONE master
+     * channel — the one that was already blinking when hazard engaged
+     * (earlier blink-mode entry; tie goes to the left) — so debounce jitter
+     * or a pre-existing blinker can never desync the sections. Resolved once
+     * for the whole strip, before any section is painted. */
     const bool hazard = in.left_blink && in.right_blink;
     const bool master_left = !hazard ||
         static_cast<int32_t>(in.left_blink_start_ms - in.right_blink_start_ms) <= 0;
@@ -158,30 +120,48 @@ int buildLayers(const CondState &in, const StripSet &set,
             t0_l = t0_r;
         }
     }
-    if (in.left_blink)
+
+    int n = 0;
+    for (int i = 0; i < set.n_sections; i++)
     {
-        const Fx::FxEffect *const fx = on_l ? set.turn_on : set.turn_off;
-        if (nullptr != fx)
+        const SectionSet& sec = set.sections[i];
+        if (0 == sec.len)
         {
-            Fx::FxLayer *const l = &out[n++];
-            l->fx = fx;
-            zoneRange(set, left_zone, &l->zone_start, &l->zone_len);
-            l->mirror = left_mirror;
-            l->t0_ms = t0_l;
-            turnTimeScale(fx, in, l);
+            continue;           /* placeholder section */
         }
-    }
-    if (in.right_blink)
-    {
-        const Fx::FxEffect *const fx = on_r ? set.turn_on : set.turn_off;
-        if (nullptr != fx)
+        const bool blinking = sectionBlinking(sec, in);
+
+        if (nullptr != sec.idle)
         {
-            Fx::FxLayer *const l = &out[n++];
-            l->fx = fx;
-            zoneRange(set, right_zone, &l->zone_start, &l->zone_len);
-            l->mirror = right_mirror;
-            l->t0_ms = t0_r;
-            turnTimeScale(fx, in, l);
+            pushLayer(sec, sec.idle, 0, out, &n);
+        }
+        if (nullptr != sec.aux && in.aux)
+        {
+            pushLayer(sec, sec.aux, in.aux_edge_ms, out, &n);
+        }
+        /* While this section's own turn signal blinks it alternates its
+         * position/turn colors only — the brake must not paint over it. */
+        if (nullptr != sec.brake && in.brake && !blinking)
+        {
+            /* Quick re-application of the brake (released < holdoff) skips
+             * the effect's intro: shift t0 back so the timeline starts at
+             * its loop/steady segment. */
+            const uint32_t t0 = in.brake_intro
+                                    ? in.brake_edge_ms
+                                    : in.brake_edge_ms - sec.brake->loop_at_ms;
+            pushLayer(sec, sec.brake, t0, out, &n);
+        }
+        if (blinking)
+        {
+            const bool left = (TurnSource::Left == sec.turn);
+            const Fx::FxEffect* const fx =
+                (left ? on_l : on_r) ? sec.turn_on : sec.turn_off;
+            if (nullptr != fx)
+            {
+                Fx::FxLayer* const l =
+                    pushLayer(sec, fx, left ? t0_l : t0_r, out, &n);
+                turnTimeScale(fx, in, l);
+            }
         }
     }
 

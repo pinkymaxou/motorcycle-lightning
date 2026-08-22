@@ -17,7 +17,7 @@ static Callback m_cb;
 static uint8_t m_stable;
 static bool m_pressed;
 
-void pollCb(void *arg)
+void pollCb(void* arg)
 {
     (void)arg;
     const bool raw = 0 == gpio_get_level(static_cast<gpio_num_t>(m_gpio));

@@ -1,4 +1,5 @@
 #include "render_core.h"
+#include "tasks.hpp"
 
 #include <atomic>
 #include <cstdio>
@@ -24,7 +25,7 @@ namespace RenderCore
 namespace
 {
 
-const char *const TAG = "render_core";
+const char* const TAG = "render_core";
 
 /* ~75 FPS (13 ms is the closest the 1 kHz FreeRTOS tick allows). Every frame
  * is pushed to the strip, even an unchanged one: a continuous refresh is what
@@ -35,9 +36,6 @@ constexpr uint32_t FRAME_PERIOD_MS = 13;
 constexpr uint32_t FRAME_BUDGET_STATS_MS = 1000;
 constexpr uint8_t BRAKE_RED_FLOOR = 64;
 constexpr int CTRL_QUEUE_DEPTH = 8;
-constexpr uint32_t RENDER_TASK_STACK_BYTES = 6144;
-constexpr UBaseType_t RENDER_TASK_PRIORITY = 10;
-constexpr BaseType_t RENDER_CORE_ID = 1;    /* WiFi/httpd live on core 0 */
 constexpr TickType_t CTRL_SEND_TIMEOUT_MS = 200;
 
 /* One owned effect slot per assignable role. */
@@ -53,24 +51,31 @@ enum class Slot : uint8_t
 
 constexpr int SLOT_COUNT = static_cast<int>(Slot::Count);
 
+/* Worst case one distinct effect per assignable slot of every section; in
+ * practice a whole config uses a handful. */
+constexpr int MAX_OWNED = CFG_MAX_SECTIONS * SLOT_COUNT * STRIP_COUNT;
+
 /* Ownership-transferred to the render task via the control queue. Each
- * strip carries its own compiled effects, so a strip can react to the very
- * same input differently from its neighbour. */
+ * section carries its own compiled effects, so two sections can react to the
+ * very same input differently. Effects are deduplicated by id: the palette is
+ * global to a config, so the same id compiles to identical data, and a full
+ * 8-section config would otherwise cost ~80 KB of heap (an FxEffect is ~1 KB)
+ * — twice that while the old bundle is still alive. */
 struct Bundle
 {
     EventArbiter::StripSet strips[STRIP_COUNT];
-    Fx::FxEffect *owned[SLOT_COUNT * STRIP_COUNT];
+    Fx::FxEffect* owned[MAX_OWNED];
+    char owned_id[MAX_OWNED][Fx::ID_LEN];
     int n_owned;
 };
 
 struct RenderCmd
 {
-    Bundle *bundle;
+    Bundle* bundle;
 };
 
 static QueueHandle_t m_ctrl_q;
 static char m_warnings[256];
-static int m_strip_gpios[STRIP_COUNT];
 
 static std::atomic<uint32_t> m_fps_x10;
 static std::atomic<uint32_t> m_frame_us_max;
@@ -78,6 +83,11 @@ static std::atomic<uint32_t> m_frame_us_max;
 /* latest composited frame per strip for the webpage live view (tearing at
  * this poll rate is visually irrelevant, so a plain copy is fine) */
 static uint8_t m_frame_copy[STRIP_COUNT][CFG_MAX_LEDS * 3];
+
+/* Render-task only (single writer): 32 layers and the fallback sets are far
+ * too big for a 6 KB task stack. */
+static Fx::FxLayer m_layers[Fx::MAX_LAYERS];
+static EventArbiter::StripSet m_fallback_sets[STRIP_COUNT];
 static std::atomic<uint16_t> m_frame_leds[STRIP_COUNT];
 
 uint32_t nowMs()
@@ -85,7 +95,7 @@ uint32_t nowMs()
     return static_cast<uint32_t>(esp_timer_get_time() / 1000);
 }
 
-void warnAppend(const char *id)
+void warnAppend(const char* id)
 {
     const size_t used = std::strlen(m_warnings);
     if (used < sizeof(m_warnings) - 48)
@@ -97,43 +107,73 @@ void warnAppend(const char *id)
 
 /* Build one assigned effect. Empty id -> nullptr (layer disabled). Unknown
  * id -> hard fallback for the role + warning. */
-const Fx::FxEffect *loadEffect(Bundle *bu, const char *id,
-                               const Fx::FxPalette &pal,
+const Fx::FxEffect* loadEffect(Bundle* bu, const char* id,
+                               const Fx::FxPalette& pal,
                                const Fx::FallbackRole role)
 {
     if ('\0' == id[0])
     {
         return nullptr;
     }
-    Fx::FxEffect *const fx = new (std::nothrow) Fx::FxEffect;
+    for (int i = 0; i < bu->n_owned; i++)
+    {
+        if (0 == std::strcmp(bu->owned_id[i], id))
+        {
+            return bu->owned[i];   /* already compiled for this config */
+        }
+    }
+    if (bu->n_owned >= MAX_OWNED)
+    {
+        warnAppend(id);
+        return Fx::fallback(role);
+    }
+
+    Fx::FxEffect* const fx = new (std::nothrow) Fx::FxEffect;
     if (nullptr == fx || !Fx::factoryBuild(id, pal, fx))
     {
         delete fx;
         warnAppend(id);
+        /* never cached: fallbacks are static and freeBundle would delete them */
         return Fx::fallback(role);
     }
-    bu->owned[bu->n_owned++] = fx;
+    bu->owned[bu->n_owned] = fx;
+    strlcpy(bu->owned_id[bu->n_owned], id, Fx::ID_LEN);
+    bu->n_owned++;
     return fx;
 }
 
-/* Hard-fallback set for strip 0: functional lighting from compiled-in data
- * alone (strip 1 stays dark until a config says otherwise). */
+/* Hard-fallback set for strip 0, built from the factory layout with static
+ * effects: functional lighting from compiled-in data alone, before storage is
+ * even mounted (strip 1 stays dark until a config says otherwise). */
 void fallbackSet(EventArbiter::StripSet sets[STRIP_COUNT])
 {
     std::memset(sets, 0, sizeof(EventArbiter::StripSet) * STRIP_COUNT);
-    EventArbiter::StripSet &s0 = sets[0];
-    s0.idle = Fx::fallback(Fx::FallbackRole::Position);
-    s0.brake = Fx::fallback(Fx::FallbackRole::Brake);
-    s0.turn_on = Fx::fallback(Fx::FallbackRole::TurnOn);
-    s0.turn_off = Fx::fallback(Fx::FallbackRole::TurnOff);
-    s0.led_count = 40;
-    s0.left_end = 12;
-    s0.center_end = 28;
-    s0.brake_zone = ZoneId::Full;
-    s0.brightness = 160;
+    EventArbiter::StripSet& s0 = sets[0];
+    s0.n_sections = CFG_DEFAULT_SECTION_COUNT;
+
+    uint16_t offset = 0;
+    for (int i = 0; i < CFG_DEFAULT_SECTION_COUNT; i++)
+    {
+        const DefaultSection& def = CFG_DEFAULT_SECTIONS[i];
+        EventArbiter::SectionSet& sec = s0.sections[i];
+        sec.start = offset;
+        sec.len = def.led_count;
+        sec.turn = def.turn;
+        sec.reversed = def.reversed;
+        sec.idle = Fx::fallback(Fx::FallbackRole::Position);
+        sec.brake = Fx::fallback(Fx::FallbackRole::Brake);
+        sec.brake_floor = true;
+        if (TurnSource::None != def.turn)
+        {
+            sec.turn_on = Fx::fallback(Fx::FallbackRole::TurnOn);
+            sec.turn_off = Fx::fallback(Fx::FallbackRole::TurnOff);
+        }
+        offset += sec.len;
+    }
+    s0.led_count = offset;
 }
 
-void freeBundle(Bundle *bu)
+void freeBundle(Bundle* bu)
 {
     if (nullptr == bu)
     {
@@ -146,60 +186,43 @@ void freeBundle(Bundle *bu)
     delete bu;
 }
 
-/* Post-composite safety floor: while braking, pixels of the brake zone that
- * are not claimed by an active turn signal keep a minimum red level. No
+/* Post-composite safety floor: a section that carries a brake effect keeps a
+ * minimum red level while the brake input is active, unless its own turn
+ * signal is blinking (that section alternates position/turn colors only). No
  * effect can make braking invisible. */
-void brakeFloor(uint8_t *rgb, const EventArbiter::StripSet &set,
-                const CondState &in)
+void brakeFloor(uint8_t* rgb, const EventArbiter::StripSet& set,
+                const CondState& in)
 {
-    uint16_t start, len;
-    EventArbiter::zoneRange(set, set.brake_zone, &start, &len);
-    const uint16_t lo = start;
-    const uint16_t hi = start + len;
-
-    const bool low_blinks = set.swap_sides ? in.right_blink : in.left_blink;
-    const bool high_blinks = set.swap_sides ? in.left_blink : in.right_blink;
-    for (uint16_t i = lo; i < hi; i++)
+    for (int k = 0; k < set.n_sections; k++)
     {
-        if (low_blinks && i < set.left_end)
+        const EventArbiter::SectionSet& sec = set.sections[k];
+        if (!EventArbiter::brakeFloorActive(sec, in))
         {
             continue;
         }
-        if (high_blinks && i >= set.center_end)
+        const uint16_t hi = sec.start + sec.len;
+        for (uint16_t i = sec.start; i < hi; i++)
         {
-            continue;
-        }
-        if (rgb[i * 3] < BRAKE_RED_FLOOR)
-        {
-            rgb[i * 3] = BRAKE_RED_FLOOR;
+            if (rgb[i * 3] < BRAKE_RED_FLOOR)
+            {
+                rgb[i * 3] = BRAKE_RED_FLOOR;
+            }
         }
     }
 }
 
-void renderTask(void *arg)
+void renderTask(void* arg)
 {
     (void)arg;
 
-    /* Init the strips from this task so the RMT interrupts land on core 1. */
-    if (ESP_OK != LedDriver::init(m_strip_gpios, STRIP_COUNT, CFG_MAX_LEDS))
-    {
-        ESP_LOGE(TAG, "strip init failed — lighting dead, check wiring");
-    }
-
     esp_task_wdt_add(nullptr);
 
-    Bundle *cur = nullptr;              /* nullptr = using the static fallback */
-    EventArbiter::StripSet fb[STRIP_COUNT];
-    fallbackSet(fb);
-    const EventArbiter::StripSet *sets = fb;
+
+    Bundle* cur = nullptr;              /* nullptr = using the static fallback */
+    fallbackSet(m_fallback_sets);
+    const EventArbiter::StripSet* sets = m_fallback_sets;
 
     static uint8_t m_rgb[CFG_MAX_LEDS * 3];
-    Fx::FxLayer layers[Fx::MAX_LAYERS];
-
-    for (int i = 0; i < STRIP_COUNT; i++)
-    {
-        LedDriver::setBrightness(stripAt(i), sets[i].brightness);
-    }
 
     uint32_t frames = 0;
     uint32_t fps_mark = nowMs();
@@ -224,7 +247,6 @@ void renderTask(void *arg)
             for (int i = 0; i < STRIP_COUNT; i++)
             {
                 const StripId id = stripAt(i);
-                LedDriver::setBrightness(id, sets[i].brightness);
                 LedDriver::setReversed(id, sets[i].reversed);
                 /* recreates the RMT device when the strip type changed; we
                  * are on the render task, where RMT channels must be born */
@@ -237,14 +259,14 @@ void renderTask(void *arg)
 
         for (int i = 0; i < STRIP_COUNT; i++)
         {
-            const EventArbiter::StripSet &set = sets[i];
+            const EventArbiter::StripSet& set = sets[i];
             if (0 == set.led_count)
             {
                 continue;           /* strip not installed */
             }
 
-            const int n = EventArbiter::buildLayers(in, set, layers);
-            Fx::composite(layers, n, now, m_rgb, set.led_count);
+            const int n = EventArbiter::buildLayers(in, set, m_layers);
+            Fx::composite(m_layers, n, now, m_rgb, set.led_count);
 
             if (in.brake)
             {
@@ -278,9 +300,9 @@ void renderTask(void *arg)
 
 } // namespace
 
-esp_err_t applyConfig(const SysConfig &cfg)
+esp_err_t applyConfig(const SysConfig& cfg)
 {
-    Bundle *const bu = new (std::nothrow) Bundle();
+    Bundle* const bu = new (std::nothrow) Bundle();
     if (nullptr == bu)
     {
         return ESP_ERR_NO_MEM;
@@ -291,34 +313,35 @@ esp_err_t applyConfig(const SysConfig &cfg)
 
     for (int i = 0; i < STRIP_COUNT; i++)
     {
-        const StripConfig &sc = cfg.strips[i];
-        EventArbiter::StripSet &set = bu->strips[i];
-
-        set.led_count = sc.led_count;
-        set.left_end = sc.zone_left_end;
-        set.center_end = sc.zone_center_end;
-        set.brake_zone = sc.brake_zone;
-        set.aux_zone = sc.aux_zone;
-        set.brightness = sc.brightness;
-        set.led_model = sc.led_model;
-        set.color_order = sc.color_order;
-        set.reversed = sc.reversed;
-        set.swap_sides = sc.swap_sides;
-
-        if (0 == sc.led_count)
+        const StripConfig& sc = cfg.strips[i];
+        EventArbiter::StripSet& set = bu->strips[i];
+        EventArbiter::layoutStrip(sc, &set);
+        if (0 == set.led_count)
         {
             continue;               /* strip not installed: no effects */
         }
-        set.idle = loadEffect(bu, sc.fx_idle, cfg.palette,
-                              Fx::FallbackRole::Position);
-        set.aux = loadEffect(bu, sc.fx_aux, cfg.palette,
-                             Fx::FallbackRole::Position);
-        set.brake = loadEffect(bu, sc.fx_brake, cfg.palette,
-                               Fx::FallbackRole::Brake);
-        set.turn_on = loadEffect(bu, sc.fx_turn_on, cfg.palette,
-                                 Fx::FallbackRole::TurnOn);
-        set.turn_off = loadEffect(bu, sc.fx_turn_off, cfg.palette,
-                                  Fx::FallbackRole::TurnOff);
+        for (int k = 0; k < set.n_sections; k++)
+        {
+            const SectionConfig& sec_cfg = sc.sections[k];
+            EventArbiter::SectionSet& sec = set.sections[k];
+            sec.idle = loadEffect(bu, sec_cfg.fx_idle, cfg.palette,
+                                  Fx::FallbackRole::Position);
+            sec.aux = loadEffect(bu, sec_cfg.fx_aux, cfg.palette,
+                                 Fx::FallbackRole::Position);
+            sec.brake = loadEffect(bu, sec_cfg.fx_brake, cfg.palette,
+                                   Fx::FallbackRole::Brake);
+            /* Off is a deliberate "dark here", so it opts out of the floor. */
+            sec.brake_floor = nullptr != sec.brake &&
+                              0 != std::strcmp(sec_cfg.fx_brake, Fx::EFFECT_ID_OFF);
+            if (TurnSource::None == sec.turn)
+            {
+                continue;           /* a turn effect could never play here */
+            }
+            sec.turn_on = loadEffect(bu, sec_cfg.fx_turn_on, cfg.palette,
+                                     Fx::FallbackRole::TurnOn);
+            sec.turn_off = loadEffect(bu, sec_cfg.fx_turn_off, cfg.palette,
+                                      Fx::FallbackRole::TurnOff);
+        }
     }
 
     const RenderCmd cmd = { bu };
@@ -350,7 +373,7 @@ bool overrideActive()
     return InputConditioner::overrideActive();
 }
 
-void getStats(uint32_t *fps_x10, uint32_t *frame_us_max)
+void getStats(uint32_t* fps_x10, uint32_t* frame_us_max)
 {
     if (nullptr != fps_x10)
     {
@@ -362,12 +385,12 @@ void getStats(uint32_t *fps_x10, uint32_t *frame_us_max)
     }
 }
 
-const char *warnings()
+const char* warnings()
 {
     return m_warnings; /* read-mostly; short bounded string */
 }
 
-uint16_t getFrame(const StripId strip, uint8_t *out_rgb, const uint16_t max_leds)
+uint16_t getFrame(const StripId strip, uint8_t* out_rgb, const uint16_t max_leds)
 {
     const int i = stripIndex(strip);
     if (i < 0 || i >= STRIP_COUNT)
@@ -383,21 +406,15 @@ uint16_t getFrame(const StripId strip, uint8_t *out_rgb, const uint16_t max_leds
     return n;
 }
 
-esp_err_t start(const int *strip_gpios)
+esp_err_t start()
 {
-    for (int i = 0; i < STRIP_COUNT; i++)
-    {
-        m_strip_gpios[i] = strip_gpios[i];
-    }
     m_ctrl_q = xQueueCreate(CTRL_QUEUE_DEPTH, sizeof(RenderCmd));
     if (nullptr == m_ctrl_q)
     {
         return ESP_ERR_NO_MEM;
     }
 
-    const BaseType_t ok = xTaskCreatePinnedToCore(
-        renderTask, "render", RENDER_TASK_STACK_BYTES, nullptr,
-        RENDER_TASK_PRIORITY, nullptr, RENDER_CORE_ID);
+    const BaseType_t ok = Tasks::create(Tasks::RENDER, renderTask, nullptr);
     return (pdPASS == ok) ? ESP_OK : ESP_FAIL;
 }
 

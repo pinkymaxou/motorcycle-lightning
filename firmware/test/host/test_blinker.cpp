@@ -17,7 +17,7 @@ int g_fail;
 } while (0)
 
 /* Advance the system tick-by-tick with fixed raw levels. */
-uint32_t runMs(Blink::BlinkSystem *s, uint32_t now, const uint32_t ms,
+uint32_t runMs(Blink::BlinkSystem* s, uint32_t now, const uint32_t ms,
                const bool l, const bool r, const bool b, const bool a)
 {
     for (uint32_t i = 0; i < ms; i++)
@@ -29,7 +29,7 @@ uint32_t runMs(Blink::BlinkSystem *s, uint32_t now, const uint32_t ms,
 }
 
 /* Simulate n flasher cycles on the left channel: on_ms ON, off_ms OFF. */
-uint32_t pulseLeft(Blink::BlinkSystem *s, uint32_t now, const int n,
+uint32_t pulseLeft(Blink::BlinkSystem* s, uint32_t now, const int n,
                    const uint32_t on_ms, const uint32_t off_ms)
 {
     for (int i = 0; i < n; i++)

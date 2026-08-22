@@ -71,7 +71,7 @@ RgbaColor colorMix(const RgbaColor a, const RgbaColor b, const float k)
 
 /* Per-pixel primitive evaluation. c1/c2/p are already time-interpolated. */
 RgbaColor primEval(const Prim prim, const uint8_t mode, const float pos,
-                   const RgbaColor c1, const RgbaColor c2, const float *p,
+                   const RgbaColor c1, const RgbaColor c2, const float* p,
                    const float min_soft)
 {
     switch (prim)
@@ -144,7 +144,7 @@ RgbaColor primEval(const Prim prim, const uint8_t mode, const float pos,
 }
 
 /* Map wall time to timeline time according to loop semantics. */
-uint32_t wrapTime(const FxEffect *fx, const uint32_t t_ms)
+uint32_t wrapTime(const FxEffect* fx, const uint32_t t_ms)
 {
     if (t_ms < fx->total_ms)
     {
@@ -164,7 +164,7 @@ uint32_t wrapTime(const FxEffect *fx, const uint32_t t_ms)
 
 } // namespace
 
-bool finalize(FxEffect *fx)
+bool finalize(FxEffect* fx)
 {
     if (fx->n_steps < 1 || fx->n_steps > MAX_STEPS)
     {
@@ -194,8 +194,8 @@ bool finalize(FxEffect *fx)
     return true;
 }
 
-void evaluate(const FxEffect *fx, const uint32_t t_ms, const uint16_t zone_len,
-              const bool mirror, RgbaColor *out)
+void evaluate(const FxEffect* fx, const uint32_t t_ms, const uint16_t zone_len,
+              const bool mirror, RgbaColor* out)
 {
     if (0 == zone_len)
     {
@@ -214,7 +214,7 @@ void evaluate(const FxEffect *fx, const uint32_t t_ms, const uint16_t zone_len,
     {
         k++;
     }
-    const FxStep *const st = &fx->steps[k];
+    const FxStep* const st = &fx->steps[k];
     const uint32_t start = (0 == k) ? 0 : fx->step_end_ms[k - 1];
 
     const float u = static_cast<float>(t - start) / st->dur_ms;
@@ -242,7 +242,7 @@ void evaluate(const FxEffect *fx, const uint32_t t_ms, const uint16_t zone_len,
     }
 }
 
-void blendOver(uint8_t *dst_rgb, const RgbaColor *src, const uint16_t count)
+void blendOver(uint8_t* dst_rgb, const RgbaColor* src, const uint16_t count)
 {
     for (uint16_t i = 0; i < count; i++)
     {
@@ -251,7 +251,7 @@ void blendOver(uint8_t *dst_rgb, const RgbaColor *src, const uint16_t count)
         {
             continue;
         }
-        uint8_t *const d = &dst_rgb[i * 3];
+        uint8_t* const d = &dst_rgb[i * 3];
         if (255 == a)
         {
             d[0] = src[i].r;

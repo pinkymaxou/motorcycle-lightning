@@ -53,8 +53,8 @@ constexpr int MAX_DEF_STEPS = 7;
 
 struct EffectDef
 {
-    const char *id;
-    const char *name;
+    const char* id;
+    const char* name;
     int8_t      loop_from;
     uint8_t     n_steps;
     StepDef     steps[MAX_DEF_STEPS];
@@ -98,8 +98,8 @@ const EffectDef FACTORY[] = {
 
     { "f_white", "Full white", 0, 1, { fill(1000, pal(FxColor::White)) } },
 
-    /* Opaque black: the zone goes DARK (assign "none" to show layers below). */
-    { "f_off", "Off (dark)", 0, 1, { fill(1000, lit(0, 0, 0)) } },
+    /* Opaque black: the section goes DARK ("none" shows the layers below). */
+    { EFFECT_ID_OFF, "Off (dark)", 0, 1, { fill(1000, lit(0, 0, 0)) } },
 };
 
 constexpr int N_FACTORY = sizeof(FACTORY) / sizeof(FACTORY[0]);
@@ -107,7 +107,7 @@ constexpr int N_FACTORY = sizeof(FACTORY) / sizeof(FACTORY[0]);
 /* Palette alpha is a BRIGHTNESS multiplier: resolve to an opaque
  * premultiplied color so the same palette color looks identical no matter
  * how many layers paint it. */
-RgbaColor resolve(const ColorRef &ref, const FxPalette &palette)
+RgbaColor resolve(const ColorRef& ref, const FxPalette& palette)
 {
     if (!ref.from_palette)
     {
@@ -122,7 +122,7 @@ RgbaColor resolve(const ColorRef &ref, const FxPalette &palette)
     return out;
 }
 
-void build(const EffectDef &def, const FxPalette &palette, FxEffect *out)
+void build(const EffectDef& def, const FxPalette& palette, FxEffect* out)
 {
     std::memset(out, 0, sizeof(*out));
     std::strncpy(out->id, def.id, ID_LEN - 1);
@@ -131,8 +131,8 @@ void build(const EffectDef &def, const FxPalette &palette, FxEffect *out)
     out->loop_from = def.loop_from;
     for (int i = 0; i < def.n_steps; i++)
     {
-        const StepDef &sd = def.steps[i];
-        FxStep *const st = &out->steps[i];
+        const StepDef& sd = def.steps[i];
+        FxStep* const st = &out->steps[i];
         st->prim = sd.prim;
         st->ease = sd.ease;
         st->mode = sd.mode;
@@ -150,7 +150,7 @@ void build(const EffectDef &def, const FxPalette &palette, FxEffect *out)
     finalize(out);
 }
 
-const EffectDef *find(const char *id)
+const EffectDef* find(const char* id)
 {
     for (int i = 0; i < N_FACTORY; i++)
     {
@@ -169,7 +169,7 @@ int factoryCount()
     return N_FACTORY;
 }
 
-const FactoryEntry *factoryGet(const int idx)
+const FactoryEntry* factoryGet(const int idx)
 {
     static FactoryEntry m_entry;
     if (idx < 0 || idx >= N_FACTORY)
@@ -181,14 +181,14 @@ const FactoryEntry *factoryGet(const int idx)
     return &m_entry;
 }
 
-bool factoryExists(const char *id)
+bool factoryExists(const char* id)
 {
     return nullptr != find(id);
 }
 
-bool factoryBuild(const char *id, const FxPalette &pal, FxEffect *out)
+bool factoryBuild(const char* id, const FxPalette& pal, FxEffect* out)
 {
-    const EffectDef *const def = find(id);
+    const EffectDef* const def = find(id);
     if (nullptr == def)
     {
         return false;
@@ -213,7 +213,7 @@ RgbaColor defaultColor(const FxColor id)
     }
 }
 
-const FxEffect *fallback(const FallbackRole role)
+const FxEffect* fallback(const FallbackRole role)
 {
     static FxEffect m_fallback[static_cast<int>(FallbackRole::Count)];
     static bool m_ready = false;
