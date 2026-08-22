@@ -23,6 +23,11 @@ CONFIG_LWIP_MAX_SOCKETS=10
 CONFIG_ESP_TASK_WDT_EN=y
 CONFIG_ESP_TASK_WDT_TIMEOUT_S=5
 CONFIG_ESP_TASK_WDT_PANIC=y
+# The panic handler itself must not live in flash. We write to flash (config,
+# learned flasher period, crash log), and a crash while the flash cache is
+# disabled would leave the handler unable to run: the board hangs forever
+# instead of rebooting — the exact failure this watchdog exists to prevent.
+CONFIG_ESP_PANIC_HANDLER_IRAM=y
 
 # RMT ISR + led_strip encoder in IRAM: the strip keeps refreshing during
 # flash writes (config saves) instead of glitching — the ESP32 RMT has no DMA
