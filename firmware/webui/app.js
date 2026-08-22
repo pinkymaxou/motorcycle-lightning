@@ -171,15 +171,17 @@ const TURN_AMBER=0xFF5A00FF,TURN_RED=0xFF0000FF,COLOR_TURN=2;
 /* Everything editable lives in Setup, and it is only applied on Save — so
    leaving the tab (or the page) with pending edits silently loses them. */
 let dirty=false;
-const LEAVE_WARNING='Unsaved changes in Setup. Leave anyway?';
+const LEAVE_WARNING='Unsaved changes. Leave anyway?';
 function markDirty(){
   if(dirty)return;
   dirty=true;
   $('savesetup').textContent='Save •';
+  $('savewifi').textContent='Save WiFi •';
 }
 function clearDirty(){
   dirty=false;
   $('savesetup').textContent='Save';
+  $('savewifi').textContent='Save WiFi';
 }
 window.addEventListener('beforeunload',e=>{
   if(!dirty)return;
@@ -198,8 +200,7 @@ function showTab(name){
   if('system'===name||'pinout'===name)loadSysinfo();
 }
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{
-  if(dirty&&'setup'===document.querySelector('nav button.act').dataset.tab&&
-     !confirm(LEAVE_WARNING))return;
+  if(dirty&&!confirm(LEAVE_WARNING))return;
   location.hash=b.dataset.tab;
   showTab(b.dataset.tab);
 });
@@ -496,6 +497,11 @@ async function loadIndex(){
   });
   if(cfg)renderShared();
 }
+function renderWifi(){
+  $('stassid').value=cfg.sta.ssid;
+  $('staactive').checked=cfg.sta.active;
+  $('stanote').textContent=cfg.sta.pass_set?'password saved':'no password';
+}
 function renderShared(){
   /* Per-section effects live in the section editor above; these two come from
      the bike's own signals and apply to every strip. */
@@ -639,9 +645,6 @@ function renderSetup(){
   bindSetupHandlers();
   cfg.strips.forEach((_,si)=>drawSections(si));
 
-  $('stassid').value=cfg.sta.ssid;
-  $('staactive').checked=cfg.sta.active;
-  $('stanote').textContent=cfg.sta.pass_set?'password saved':'no password';
   $('simsections').textContent=cfg.strips.map((st,i)=>
     0===totalLeds(st)?`${STRIP_LABEL(i)}: none`:
     `${STRIP_LABEL(i)}: ${totalLeds(st)} LEDs, `+
@@ -653,12 +656,14 @@ function bindSetupHandlers(){
   const host=$('setupstrips');
   /* One place marks the tab dirty: every control that mutates cfg is inside
      it, and the reorder/add/delete buttons only ever fire a click. */
-  const tab=$('tab-setup');
-  tab.oninput=markDirty;
-  tab.onchange=markDirty;
-  tab.onclick=e=>{
-    if(e.target.closest('[data-add],[data-move],[data-del]'))markDirty();
-  };
+  for(const id of ['tab-setup','tab-wifi']){
+    const tab=$(id);
+    tab.oninput=markDirty;
+    tab.onchange=markDirty;
+    tab.onclick=e=>{
+      if(e.target.closest('[data-add],[data-move],[data-del]'))markDirty();
+    };
+  }
   host.querySelectorAll('[data-sp]').forEach(el=>{
     const upd=()=>{
       const[si,key]=el.dataset.sp.split(':');
@@ -767,7 +772,9 @@ function drawSections(si){
   drawFeed(ctx,cv,feedLeft);
 }
 
-$('savesetup').onclick=async()=>{
+/* A PUT carries the whole config, so both Save buttons take the same path:
+   collect every editable field, send, reload from the module. */
+async function saveConfig(){
   for(const[i,st]of cfg.strips.entries()){
     if(totalLeds(st)>MAX_LEDS||st.sections.length>MAX_SECTIONS){
       return toast(`${STRIP_LABEL(i)}: too many LEDs or sections`,true);
@@ -787,7 +794,9 @@ $('savesetup').onclick=async()=>{
     clearDirty();
     toast('saved ✓');
   }catch(e){toast(e,true);}
-};
+}
+$('savesetup').onclick=saveConfig;
+$('savewifi').onclick=saveConfig;
 $('restorebtn').onclick=async()=>{
   if(!confirm('Restore factory sections and setup?'))return;
   try{
@@ -870,7 +879,8 @@ async function loadSysinfo(){
 $('sysrefresh').onclick=loadSysinfo;
 
 /* ---- boot ---- */
-function renderAll(){renderShared();renderPalette();renderSetup();renderLiveStrips();}
+function renderAll(){renderShared();renderPalette();renderSetup();
+  renderWifi();renderLiveStrips();}
 (async()=>{
   try{
     cfg=decodeConfig(await api('config'));

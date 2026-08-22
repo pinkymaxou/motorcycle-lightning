@@ -57,14 +57,14 @@ the module button once to bring it up; press again to shut it down.
 2. Join the WiFi network **MotoLights** from your phone or laptop.
 3. Open **http://192.168.4.1**.
 
-If you gave the module your home WiFi in Setup, it also joins that network
-when the config WiFi is up, and the page is reachable at the address shown in
-the System tab. The SoftAP always stays available either way, so you can
+If you gave the module your home network in the **WiFi** tab, it also joins
+that network when the config WiFi is up, and the page is reachable at the
+address shown in the System tab. The SoftAP always stays available either way, so you can
 never lock yourself out.
 
-The page has four tabs. Everything you change lives in **Setup** and is only
-applied when you press **Save** — the Save button grows a dot when you have
-unsaved changes, and leaving the tab asks first.
+The page has five tabs. Everything you change lives in **Setup** and
+**WiFi**, and is only applied when you press **Save** — the button grows a
+dot when you have unsaved changes, and leaving asks first.
 
 ---
 
@@ -162,13 +162,6 @@ effects refer to. Editing one changes every effect that uses it. The
 brightness slider dims the colour itself, and it is the **only** brightness
 control: there is no separate per-strip level to fight with.
 
-### WiFi — home network
-
-Optional. Enter your network's SSID and password to have the module join it
-whenever the config WiFi is up; it is only there to make the page easier to
-reach from a laptop. The password is write-only — leave it blank to keep the
-current one. The module never brings up any radio on its own at boot.
-
 ### Save / Restore defaults
 
 **Save** writes everything to the module's flash and applies it immediately.
@@ -177,7 +170,25 @@ current one. The module never brings up any radio on its own at boot.
 
 ---
 
-## 6. System — what the module reports
+## 6. WiFi — joining your home network
+
+![WiFi tab](img/05-wifi.png)
+
+Optional, and only there to make the page easier to reach from a laptop:
+enter your network's SSID and password and the module joins it whenever the
+config WiFi is up. The SoftAP stays available at the same time, so a wrong
+password here can never lock you out.
+
+The password is write-only — the field shows *(unchanged)* and leaving it
+blank keeps the one already stored. **STA active** is what decides whether
+the module tries to join at all. None of this makes the module transmit on
+its own: the radio still only comes up when you press the button.
+
+*(The SSID is blurred in this screenshot, not on your page.)*
+
+---
+
+## 7. System — what the module reports
 
 ![System tab](img/04-system.png)
 
@@ -189,7 +200,7 @@ unexpected reset* here is worth reporting.
 
 ---
 
-## 7. How it behaves on the road
+## 8. How it behaves on the road
 
 **Turn signals.** The module measures your flasher's period the first time it
 sees it blink and remembers it across reboots. A sweep is scaled to that
@@ -213,7 +224,7 @@ the module — and it comes back dark rather than frozen on half a frame.
 
 ---
 
-## 8. Troubleshooting
+## 9. Troubleshooting
 
 | Symptom | What it means |
 |---|---|
@@ -230,7 +241,7 @@ A serial console is available at 115200 baud with a few commands: `wifi`,
 
 ---
 
-## 9. Limits
+## 10. Limits
 
 | | |
 |---|---|

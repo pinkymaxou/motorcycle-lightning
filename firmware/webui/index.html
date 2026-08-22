@@ -16,6 +16,7 @@
 <nav>
   <button data-tab="sim" class="act">Simulate</button>
   <button data-tab="setup">Setup</button>
+  <button data-tab="wifi">WiFi</button>
   <button data-tab="pinout">Pinout</button>
   <button data-tab="system">System</button>
 </nav>
@@ -84,6 +85,14 @@
     tune them. Brightness dims the color itself (safe for layering).</p>
     <table id="palrows"><thead><tr><th></th><th>Name</th><th>Color</th><th>Brightness</th></tr></thead><tbody></tbody></table>
   </div>
+  <div class="row">
+    <button class="btn acc" id="savesetup">Save</button>
+    <span style="flex:1"></span>
+    <button class="btn danger" id="restorebtn">Restore defaults</button>
+  </div>
+</section>
+
+<section id="tab-wifi">
   <div class="card">
     <h2>WiFi — home network</h2>
     <div class="row">
@@ -97,10 +106,10 @@
     the config WiFi is up. The password is write-only: leave it blank to keep
     the current one.</p>
   </div>
+  <p class="muted">Optional, and only to make the page easier to reach: the
+  module brings no radio up on its own at boot — the button does.</p>
   <div class="row">
-    <button class="btn acc" id="savesetup">Save</button>
-    <span style="flex:1"></span>
-    <button class="btn danger" id="restorebtn">Restore defaults</button>
+    <button class="btn acc" id="savewifi">Save WiFi</button>
   </div>
 </section>
 

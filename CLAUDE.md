@@ -60,8 +60,9 @@ Regenerate the user manual before merging this branch into master.
    the animation live.
 3. Run firmware/tools/capture_screenshots.sh <ip>, then LOOK at every
    image in user_manual/img/: each tab fully framed, no cut-off card, no
-   empty black filler, and no personal data visible (the Setup capture
-   deliberately stops before the WiFi card, which shows the home SSID).
+   white strip at the bottom, and no personal data visible — the WiFi
+   capture blurs the home SSID with a hard-coded box, so check that the
+   blur still lands on the field if that card's layout moved.
 4. Clear the simulation afterwards — override off and every forced signal
    off — so the module is left following its real inputs.
 5. Read user_manual/README.md against what the screenshots now show and
