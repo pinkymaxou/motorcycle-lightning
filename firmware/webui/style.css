@@ -92,3 +92,9 @@ th{color:var(--dim);font-weight:700;text-transform:uppercase;
 .ri{color:var(--dim);opacity:.4;letter-spacing:1px;font-style:italic}
 .ri.on{color:var(--acc);opacity:1;text-shadow:0 0 10px rgba(255,159,26,.6)}
 .ri.on.dimphase{opacity:.55;text-shadow:none}
+
+/* firmware upload progress */
+.otabar{margin-top:10px;height:8px;background:var(--panel2);
+  border:1px solid var(--line);border-radius:2px;overflow:hidden}
+.otabar>span{display:block;height:100%;width:0;background:var(--acc);
+  transition:width .2s linear}

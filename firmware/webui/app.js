@@ -166,7 +166,7 @@ const EV={left:0,right:1,brake:2,aux:3};
 /* fixed palette (FxColor order) */
 const STRIP_LABEL=i=>`Strip ${i+1}`;
 const COLOR_NAMES=['Position light','Brake','Turn signal','White'];
-const TURN_AMBER=0xFF5A00FF,TURN_RED=0xFF0000FF,COLOR_TURN=2;
+const TURN_AMBER=0xFF8000FF,TURN_RED=0xFF0000FF,COLOR_TURN=2;
 
 /* Everything editable lives in Setup, and it is only applied on Save — so
    leaving the tab (or the page) with pending edits silently loses them. */
@@ -877,6 +877,41 @@ async function loadSysinfo(){
   }catch(e){toast('sysinfo: '+e,true);}
 }
 $('sysrefresh').onclick=loadSysinfo;
+
+/* ---- firmware update ---- */
+const OTA_REBOOT_MS=8000;
+$('otabtn').onclick=()=>{
+  const f=$('otafile').files[0];
+  if(!f)return toast('choose a .bin file first',true);
+  const kb=Math.round(f.size/1024);
+  if(!confirm(`Flash ${f.name} (${kb} KB)? The module reboots when it is done.`))return;
+  const xhr=new XMLHttpRequest();
+  const done=(msg,err)=>{
+    $('otabtn').disabled=false;
+    $('otastate').textContent=msg;
+    if(err)toast(msg,true);
+  };
+  xhr.upload.onprogress=e=>{
+    if(!e.lengthComputable)return;
+    const pct=Math.round(e.loaded*100/e.total);
+    $('otafill').style.width=pct+'%';
+    $('otastate').textContent=`uploading ${pct}%`;
+  };
+  xhr.onload=()=>{
+    if(200!==xhr.status)return done(xhr.responseText||`HTTP ${xhr.status}`,true);
+    $('otafill').style.width='100%';
+    done('written — rebooting, this page reloads on its own');
+    setTimeout(()=>location.reload(),OTA_REBOOT_MS);
+  };
+  xhr.onerror=()=>done('upload failed — the module went away',true);
+  $('otabtn').disabled=true;
+  $('otabar').hidden=false;
+  $('otafill').style.width='0%';
+  $('otastate').textContent='uploading…';
+  xhr.open('POST','/api/ota');
+  xhr.setRequestHeader('Content-Type','application/octet-stream');
+  xhr.send(f);
+};
 
 /* ---- boot ---- */
 function renderAll(){renderShared();renderPalette();renderSetup();

@@ -26,7 +26,7 @@ shot sim    01-simulate.png 830
 shot setup  02-setup.png    1560
 shot wifi   05-wifi.png     420
 shot pinout 03-pinout.png   570
-shot system 04-system.png   710
+shot system 04-system.png   1000
 
 # The WiFi tab shows the home network's name. Blur that one field — the box
 # is in screenshot pixels (device pixels, i.e. CSS x2), so re-check it if the

@@ -1,5 +1,7 @@
 # motorcycle-lightning
 
+[![build](https://github.com/pinkymaxou/motorcycle-lightning/actions/workflows/build.yml/badge.svg)](https://github.com/pinkymaxou/motorcycle-lightning/actions/workflows/build.yml)
+
 Motorcycle turn signal and brake effects on a WS2812B strip, driven by an
 ESP32 (M5Stamp Pico) on a custom opto-isolated interface PCB (see `pcb/`).
 
@@ -58,6 +60,11 @@ up, press it again to shut it down. The on-module status LED blinks at 2 Hz:
 riding), orange = network error, purple = default config.
 
 After flashing, the page is unreachable until you press the button once.
+
+Firmware updates go over WiFi from the System tab (or
+`curl -X POST --data-binary @firmware/build/motorcycle_lightning.bin
+http://<module>/api/ota`): the image lands in the spare OTA slot and the
+module rolls back on its own if it fails to boot.
 
 Host unit tests (no ESP-IDF needed): `firmware/test/host/run_tests.sh`
 

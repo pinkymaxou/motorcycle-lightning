@@ -365,7 +365,7 @@ void testFactoryBuild()
     CHECK(1 == fx.n_steps);
     CHECK(-1 == fx.loop_from);
     CHECK(Fx::Prim::Wipe == fx.steps[0].prim);
-    CHECK(0xFF == fx.steps[0].c1a.r && 0x5A == fx.steps[0].c1a.g);
+    CHECK(0xFF == fx.steps[0].c1a.r && 0x80 == fx.steps[0].c1a.g);
     CHECK(255 == fx.steps[0].c1a.a);
     CHECK(Fx::factoryBuild("f_brake_flash", pal, &fx));
     CHECK(7 == fx.n_steps && 6 == fx.loop_from);

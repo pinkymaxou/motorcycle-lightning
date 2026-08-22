@@ -201,7 +201,30 @@ unexpected reset* here is worth reporting.
 
 ---
 
-## 8. How it behaves on the road
+## 8. Updating the firmware
+
+The System tab takes a new `motorcycle_lightning.bin` and installs it over
+WiFi — no cable, no opening the box.
+
+1. Bring the config WiFi up and open the page.
+2. **System → Firmware update**, choose the `.bin`, press **Upload & reboot**.
+3. Watch the bar; roughly 900 KB takes a few seconds. The module verifies the
+   image, reboots into it, and the page reloads by itself.
+
+The flash holds **two** firmware slots. An update is written to the spare one,
+so the firmware you are running is never overwritten while it runs. The new
+one has to prove itself: if it fails to complete a boot — a crash, a watchdog
+reset — the module goes back to the previous slot on its own. An image built
+for another project is refused before a single byte is written.
+
+The strips may glitch or sit still while the flash is being written; that is
+expected, and the module reboots dark either way. Note that the config WiFi is
+off again after the reboot, as after any restart — press the button to get the
+page back.
+
+---
+
+## 9. How it behaves on the road
 
 **Turn signals.** The module measures your flasher's period the first time it
 sees it blink and remembers it across reboots. A sweep is scaled to that
@@ -225,7 +248,7 @@ the module — and it comes back dark rather than frozen on half a frame.
 
 ---
 
-## 9. Troubleshooting
+## 10. Troubleshooting
 
 | Symptom | What it means |
 |---|---|
@@ -236,13 +259,15 @@ the module — and it comes back dark rather than frozen on half a frame.
 | Animation runs the wrong way | flip the section's **Direction**, or the strip's **reversed data direction** if the whole bar is mirrored |
 | Blinking out of step with the bike | let it blink a few times so the period gets learned; the System tab shows the learned value |
 | `Unexpected resets` is not zero | the module crashed or was rebooted by its watchdog — note the reason and report it |
+| Firmware update refused | the file is not a MotoLights image, or it is not an ESP32 application at all — the message says which |
+| The module came back on the old firmware after an update | the new image failed its first boot and the module rolled itself back |
 
 A serial console is available at 115200 baud with a few commands: `wifi`,
 `wifi on`, `wifi off`, `crashlog`, `crashlog clear`, `reboot`.
 
 ---
 
-## 10. Limits
+## 11. Limits
 
 | | |
 |---|---|

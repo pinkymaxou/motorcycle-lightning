@@ -19,6 +19,7 @@
 #include "config_store.h"
 #include "input_conditioner.h"
 #include "crash_log.h"
+#include "esp_ota_ops.h"
 #include "led_driver.h"
 #include "render_core.h"
 #include "net_services.h"
@@ -250,6 +251,24 @@ extern "C" void app_main()
                  sc.n_sections, layout);
     }
     ESP_LOGI(TAG, "flasher period %ums", static_cast<unsigned>(stored_period));
+
+    /* The boot sequence completed and the strips are lit: accept this image.
+     * Until this call a freshly OTA'd firmware is on probation — a crash or a
+     * watchdog reset before here rolls the module back to the slot it came
+     * from, which is the whole point of updating over the air. */
+    const esp_partition_t* const running = esp_ota_get_running_partition();
+    esp_ota_img_states_t state;
+    if (ESP_OK == esp_ota_get_state_partition(running, &state) &&
+        ESP_OTA_IMG_PENDING_VERIFY == state)
+    {
+        ESP_LOGW(TAG, "first boot of a new image on %s — accepting it",
+                 running->label);
+        esp_ota_mark_app_valid_cancel_rollback();
+    }
+    else
+    {
+        ESP_LOGI(TAG, "running from %s", running->label);
+    }
 
     /* Housekeeping: persist the learned flasher period outside the timer and
      * render contexts (NVS writes block). */

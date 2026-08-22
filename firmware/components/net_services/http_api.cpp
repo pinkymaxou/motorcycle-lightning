@@ -523,6 +523,7 @@ const Route ROUTES[] = {
     { "/api/effects", HTTP_GET, hEffectsGet },
     { "/api/sysinfo", HTTP_GET, hSysinfoGet },
     { "/api/command", HTTP_POST, hCommandPost },
+    { "/api/ota", HTTP_POST, otaPost },
 };
 
 } // namespace
