@@ -56,7 +56,6 @@ Fx::FxLayer *pushLayer(const SectionSet &sec, const Fx::FxEffect *fx,
 void layoutStrip(const StripConfig &sc, StripSet *out)
 {
     *out = StripSet{};
-    out->brightness = sc.brightness;
     out->led_model = sc.led_model;
     out->color_order = sc.color_order;
     out->reversed = sc.reversed;

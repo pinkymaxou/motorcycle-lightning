@@ -50,7 +50,6 @@ namespace
  * page is all it takes to enable it. */
 void stripDefaults(StripConfig *sc, const bool installed)
 {
-    sc->brightness = 160;
     sc->led_model = LedModel::WS2812;
     sc->color_order = ColorOrder::GRB;
     sc->reversed = false;

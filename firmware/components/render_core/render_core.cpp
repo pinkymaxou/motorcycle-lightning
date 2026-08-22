@@ -149,7 +149,6 @@ void fallbackSet(EventArbiter::StripSet sets[STRIP_COUNT])
 {
     std::memset(sets, 0, sizeof(EventArbiter::StripSet) * STRIP_COUNT);
     EventArbiter::StripSet &s0 = sets[0];
-    s0.brightness = 160;
     s0.n_sections = CFG_DEFAULT_SECTION_COUNT;
 
     uint16_t offset = 0;
@@ -217,10 +216,6 @@ void renderTask(void *arg)
 
     esp_task_wdt_add(nullptr);
 
-    for (int i = 0; i < STRIP_COUNT; i++)
-    {
-        LedDriver::setBrightness(stripAt(i), m_fallback_sets[i].brightness);
-    }
 
     Bundle *cur = nullptr;              /* nullptr = using the static fallback */
     fallbackSet(m_fallback_sets);
@@ -251,7 +246,6 @@ void renderTask(void *arg)
             for (int i = 0; i < STRIP_COUNT; i++)
             {
                 const StripId id = stripAt(i);
-                LedDriver::setBrightness(id, sets[i].brightness);
                 LedDriver::setReversed(id, sets[i].reversed);
                 /* recreates the RMT device when the strip type changed; we
                  * are on the render task, where RMT channels must be born */

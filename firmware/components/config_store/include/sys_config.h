@@ -4,7 +4,7 @@
 #include <cstdint>
 #include "effect_model.h"
 
-constexpr uint32_t CFG_VERSION = 7;
+constexpr uint32_t CFG_VERSION = 8;
 constexpr uint16_t CFG_MAX_LEDS = 300;
 constexpr int CFG_MAX_SECTIONS = 8;   /* mirrored by ws_protocol.options */
 constexpr int CFG_STA_SSID_LEN = 33;
@@ -62,7 +62,7 @@ enum class TurnSource : uint8_t
 };
 
 /* One contiguous run of LEDs inside a strip, in wiring order. The hardware
- * (model, color order, brightness, data direction) belongs to the strip; a
+ * (model, color order, data direction) belongs to the strip; a
  * section only decides what plays there and in which direction. An empty
  * effect id means that event does not paint this section. */
 struct SectionConfig
@@ -81,7 +81,6 @@ struct SectionConfig
  * strip's LED count is the sum of the section lengths. */
 struct StripConfig
 {
-    uint8_t    brightness;      /* output scale 0..255 */
     LedModel   led_model;
     ColorOrder color_order;
     bool       reversed;        /* flip strip direction at output (wiring) */

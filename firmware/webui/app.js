@@ -55,7 +55,7 @@ function emptySection(){
     idle:'',brake:'',turn_on:'',turn_off:'',aux:''};
 }
 function emptyStrip(){
-  return {brightness:160,led_model:0,color_order:0,reversed:false,sections:[]};
+  return {led_model:0,color_order:0,reversed:false,sections:[]};
 }
 function decodeSection(u8){
   const sec=emptySection();
@@ -76,7 +76,7 @@ function decodeStrip(u8){
   const st=emptyStrip();
   pbScan(u8,(f,v,s)=>{
     switch(f){
-    case 2:st.brightness=v;break;  case 3:st.led_model=v;break;
+    case 3:st.led_model=v;break;
     case 4:st.color_order=v;break; case 5:st.reversed=!!v;break;
     case 9:st.sections.push(decodeSection(s));break;
     }
@@ -110,7 +110,7 @@ function encodeSection(sec){
 }
 function encodeStrip(st){
   const w=pbW();
-  w.uint(2,st.brightness);w.uint(3,st.led_model);
+  w.uint(3,st.led_model);
   w.uint(4,st.color_order);w.bool(5,st.reversed);
   /* every section keeps its slot: the order is the wiring order */
   for(const sec of st.sections)w.bytesAlways(9,encodeSection(sec));
@@ -582,9 +582,6 @@ function renderSetup(){
       <h2>${STRIP_LABEL(si)}
         ${0===total?'<span class="pill">not installed</span>':''}</h2>
       <div class="grid2">
-        <label>Brightness <input type="range" data-sp="${si}:brightness"
-          min="5" max="255" value="${st.brightness}" style="width:130px">
-          <span data-bv="${si}">${st.brightness}</span></label>
         <label>LED model <select data-sp="${si}:led_model">${opts(LED_MODELS,st.led_model)}</select></label>
         <label>Color order <select data-sp="${si}:color_order">${opts(COLOR_ORDERS,st.color_order)}</select></label>
         <label><input type="checkbox" data-sp="${si}:reversed"
@@ -631,7 +628,6 @@ function bindSetupHandlers(){
       if(key==='reversed'){st.reversed=el.checked;drawSections(+si);}
       else{
         st[key]=+el.value;
-        if(key==='brightness')host.querySelector(`[data-bv="${si}"]`).textContent=el.value;
       }
     };
     el.oninput=upd;el.onchange=upd;

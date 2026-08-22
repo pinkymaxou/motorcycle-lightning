@@ -171,7 +171,6 @@ void sectionFromProto(const motolights_Section &in, SectionConfig *sec)
 
 void stripToProto(const StripConfig &sc, motolights_Strip *out)
 {
-    out->brightness = sc.brightness;
     out->led_model = static_cast<uint32_t>(sc.led_model);
     out->color_order = static_cast<uint32_t>(sc.color_order);
     out->reversed = sc.reversed;
@@ -187,7 +186,6 @@ void stripToProto(const StripConfig &sc, motolights_Strip *out)
 void stripFromProto(const motolights_Strip &in, StripConfig *sc)
 {
     *sc = StripConfig{};        /* a PUT carries the whole strip */
-    sc->brightness = static_cast<uint8_t>(in.brightness);
     sc->led_model = static_cast<LedModel>(in.led_model);
     sc->color_order = static_cast<ColorOrder>(in.color_order);
     sc->reversed = in.reversed;

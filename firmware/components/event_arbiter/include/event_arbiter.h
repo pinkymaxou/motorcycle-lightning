@@ -34,7 +34,6 @@ struct StripSet
     uint16_t   led_count;   /* sum of the section lengths; 0 = not installed */
 
     /* output hardware */
-    uint8_t    brightness;
     LedModel   led_model;
     ColorOrder color_order;
     bool       reversed;

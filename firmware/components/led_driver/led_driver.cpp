@@ -41,7 +41,6 @@ struct Strip
 {
     led_strip_handle_t handle;
     int gpio;
-    uint8_t brightness;
     bool reversed;
     LedModel model;
     ColorOrder order;
@@ -157,9 +156,9 @@ void createOnCore1(void *arg)
     vTaskDelete(nullptr);
 }
 
-inline uint8_t shade(const uint8_t c, const uint8_t brightness)
+inline uint8_t shade(const uint8_t c)
 {
-    return m_gamma_lut[(c * (brightness + 1)) >> 8];
+    return m_gamma_lut[c];
 }
 
 } // namespace
@@ -180,7 +179,6 @@ esp_err_t init(const int *gpios, const int count, const uint16_t max_leds)
     for (int i = 0; i < m_n_strips; i++)
     {
         m_strips[i].gpio = gpios[i];
-        m_strips[i].brightness = 255;
         m_strips[i].model = LedModel::WS2812;
         m_strips[i].order = ColorOrder::GRB;
     }
@@ -193,14 +191,6 @@ esp_err_t init(const int *gpios, const int count, const uint16_t max_leds)
     }
     ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(INIT_TIMEOUT_MS));
     return m_init_err;
-}
-
-void setBrightness(const StripId strip, const uint8_t brightness)
-{
-    if (validStrip(strip))
-    {
-        m_strips[stripIndex(strip)].brightness = brightness;
-    }
 }
 
 void setReversed(const StripId strip, const bool reversed)
@@ -245,9 +235,9 @@ esp_err_t write(const StripId strip, const uint8_t *rgb, uint16_t count)
     for (uint16_t i = 0; i < count; i++)
     {
         const uint16_t src = st.reversed ? static_cast<uint16_t>(count - 1 - i) : i;
-        const uint32_t r = shade(rgb[src * 3 + 0], st.brightness);
-        const uint32_t g = shade(rgb[src * 3 + 1], st.brightness);
-        const uint32_t b = shade(rgb[src * 3 + 2], st.brightness);
+        const uint32_t r = shade(rgb[src * 3 + 0]);
+        const uint32_t g = shade(rgb[src * 3 + 1]);
+        const uint32_t b = shade(rgb[src * 3 + 2]);
         /* The driver places each component per the configured wire order and
          * writes 0 to the W channel of RGBW strips. */
         if (st.wide)

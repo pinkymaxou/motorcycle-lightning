@@ -116,7 +116,7 @@ visibility, the section decides territory. An unassigned event paints nothing.
 
 ### Output (device only)
 
-`out = gamma_lut[(c · (brightness+1)) >> 8]` with a gamma-2.2 LUT, applied
+`out = gamma_lut[c]` with a gamma-2.2 LUT, applied
 after compositing. The webpage receives the pre-gamma composited frame and
 draws it as-is — an sRGB display applies ~2.2 itself, so the two match.
 

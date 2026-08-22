@@ -83,9 +83,8 @@ message Section {
 // One physical output: its hardware, then the sections laid end to end. The
 // strip's LED count is the sum of the section lengths.
 message Strip {
-  reserved 1, 6, 7, 8;   // led_count, zones, assign, swap_sides (fixed zones)
-  reserved "led_count", "zones", "assign", "swap_sides";
-  uint32 brightness  = 2;
+  reserved 1, 2, 6, 7, 8;   // led_count, brightness, zones, assign, swap_sides
+  reserved "led_count", "brightness", "zones", "assign", "swap_sides";
   // LED controller family (led_strip models): 0=WS2812 1=SK6812 2=WS2811
   // 3=WS2816 (WS2816 carries 16 bits per color component).
   uint32 led_model   = 3;
