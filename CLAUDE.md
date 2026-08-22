@@ -76,11 +76,8 @@ Regenerate the user manual before merging this branch into master.
 
 ## Committing
 
-Imperative subject line, a body that says *why*, and:
-
-```
-Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
-```
+Imperative subject line, a body that says *why*, and **no Co-Authored-By
+trailer** — this repo's history carries no attribution footers.
 
 Keep unrelated changes in separate commits — a mechanical sweep (renames,
 formatting) always gets its own, so it never hides a behaviour change.

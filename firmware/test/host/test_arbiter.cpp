@@ -77,6 +77,7 @@ StripSet makeSet()
         SectionSet& sec = set.sections[i];
         sec.idle = &g_idle;
         sec.brake = &g_brake;
+        sec.brake_floor = true;      /* a real brake effect, not Off */
         if (TurnSource::None != sec.turn)
         {
             sec.turn_on = &g_on;
@@ -239,6 +240,31 @@ void testBrakeSkippedInBlinkingSection()
 }
 
 /* A reversed section reverses everything it paints, not just the sweep. */
+/* The red floor is a safety net for a section that asked for a brake effect —
+ * not a veto over one that asked for darkness. */
+void testBrakeFloorHonoursOff()
+{
+    StripSet set = makeSet();
+    CondState in = {};
+    in.period_ms = 750;
+    in.brake = true;
+
+    CHECK(EventArbiter::brakeFloorActive(set.sections[1], in));
+
+    set.sections[1].brake_floor = false;      /* section's brake effect is Off */
+    CHECK(!EventArbiter::brakeFloorActive(set.sections[1], in));
+
+    /* and a blinking section never gets the floor, whatever it asked for */
+    set.sections[0].brake_floor = true;
+    in.left_blink = true;
+    CHECK(!EventArbiter::brakeFloorActive(set.sections[0], in));
+
+    /* no brake input, no floor */
+    in.brake = false;
+    in.left_blink = false;
+    CHECK(!EventArbiter::brakeFloorActive(set.sections[2], in));
+}
+
 void testSectionDirection()
 {
     StripSet set = makeSet();
@@ -356,6 +382,7 @@ int main()
     testHazardSyncsOnEarlierChannel();
     testSingleTurnUsesOwnChannel();
     testBrakeSkippedInBlinkingSection();
+    testBrakeFloorHonoursOff();
     testSectionDirection();
     testTurnTimeScale();
     testLayerBudget();

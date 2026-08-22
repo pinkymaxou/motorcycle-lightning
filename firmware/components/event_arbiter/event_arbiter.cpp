@@ -87,6 +87,11 @@ bool sectionBlinking(const SectionSet& sec, const CondState& in)
            (TurnSource::Right == sec.turn && in.right_blink);
 }
 
+bool brakeFloorActive(const SectionSet& sec, const CondState& in)
+{
+    return in.brake && sec.brake_floor && !sectionBlinking(sec, in);
+}
+
 int buildLayers(const CondState& in, const StripSet& set,
                 Fx::FxLayer out[Fx::MAX_LAYERS])
 {

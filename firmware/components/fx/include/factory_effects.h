@@ -14,6 +14,10 @@ struct FactoryEntry
     const char* name;
 };
 
+/* Assigning this effect is an explicit "paint black here", and the arbiter
+ * honours it: a section whose brake effect is Off gets no red floor. */
+constexpr const char* EFFECT_ID_OFF = "f_off";
+
 int factoryCount();
 const FactoryEntry* factoryGet(int idx);
 bool factoryExists(const char* id);

@@ -19,6 +19,11 @@ struct SectionSet
     const Fx::FxEffect* turn_on;
     const Fx::FxEffect* turn_off;
 
+    /* A brake effect is assigned and it is not the explicit Off: only then
+     * does the red floor apply. Choosing Off is a deliberate "dark here",
+     * and whoever configures the strip owns that call. */
+    bool       brake_floor;
+
     uint16_t   start;      /* offset of the section's first LED in the strip */
     uint16_t   len;        /* 0 = the section paints nothing */
     TurnSource turn;
@@ -47,6 +52,12 @@ void layoutStrip(const StripConfig& sc, StripSet* out);
 /* True while this section's own turn signal is in blink mode. The one place
  * that rule lives: the arbiter and the renderer's brake floor both call it. */
 bool sectionBlinking(const SectionSet& sec, const CondState& in);
+
+/* True when the post-composite red floor must be applied to this section:
+ * the brake is physically on, the section asked for a brake effect other
+ * than Off, and it is not currently blinking (a turn signal outranks the
+ * brake light on its own piece of strip). */
+bool brakeFloorActive(const SectionSet& sec, const CondState& in);
 
 /* Builds the layer stack in paint order: for each section, idle, aux, brake,
  * then its turn layer. Sections never overlap, so grouping per section is a

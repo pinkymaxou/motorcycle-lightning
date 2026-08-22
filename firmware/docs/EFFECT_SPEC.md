@@ -112,7 +112,9 @@ visibility, the section decides territory. An unassigned event paints nothing.
   starts the timeline at the loop segment.
 - While the brake input is physically active, a post-composite red floor
   (R ≥ 64) applies to every section that has a brake effect assigned and is
-  not currently blinking.
+  not currently blinking. The **Off** effect is excluded: assigning it is an
+  explicit "dark here", and the configuration owns that decision. `none` is
+  also excluded, since nothing was assigned at all.
 
 ### Output (device only)
 

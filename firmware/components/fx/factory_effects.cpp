@@ -98,8 +98,8 @@ const EffectDef FACTORY[] = {
 
     { "f_white", "Full white", 0, 1, { fill(1000, pal(FxColor::White)) } },
 
-    /* Opaque black: the zone goes DARK (assign "none" to show layers below). */
-    { "f_off", "Off (dark)", 0, 1, { fill(1000, lit(0, 0, 0)) } },
+    /* Opaque black: the section goes DARK ("none" shows the layers below). */
+    { EFFECT_ID_OFF, "Off (dark)", 0, 1, { fill(1000, lit(0, 0, 0)) } },
 };
 
 constexpr int N_FACTORY = sizeof(FACTORY) / sizeof(FACTORY[0]);

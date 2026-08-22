@@ -162,6 +162,7 @@ void fallbackSet(EventArbiter::StripSet sets[STRIP_COUNT])
         sec.reversed = def.reversed;
         sec.idle = Fx::fallback(Fx::FallbackRole::Position);
         sec.brake = Fx::fallback(Fx::FallbackRole::Brake);
+        sec.brake_floor = true;
         if (TurnSource::None != def.turn)
         {
             sec.turn_on = Fx::fallback(Fx::FallbackRole::TurnOn);
@@ -195,7 +196,7 @@ void brakeFloor(uint8_t* rgb, const EventArbiter::StripSet& set,
     for (int k = 0; k < set.n_sections; k++)
     {
         const EventArbiter::SectionSet& sec = set.sections[k];
-        if (nullptr == sec.brake || EventArbiter::sectionBlinking(sec, in))
+        if (!EventArbiter::brakeFloorActive(sec, in))
         {
             continue;
         }
@@ -329,6 +330,9 @@ esp_err_t applyConfig(const SysConfig& cfg)
                                  Fx::FallbackRole::Position);
             sec.brake = loadEffect(bu, sec_cfg.fx_brake, cfg.palette,
                                    Fx::FallbackRole::Brake);
+            /* Off is a deliberate "dark here", so it opts out of the floor. */
+            sec.brake_floor = nullptr != sec.brake &&
+                              0 != std::strcmp(sec_cfg.fx_brake, Fx::EFFECT_ID_OFF);
             if (TurnSource::None == sec.turn)
             {
                 continue;           /* a turn effect could never play here */

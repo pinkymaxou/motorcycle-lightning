@@ -115,11 +115,12 @@ For each section:
 - **Custom…** — opens the five selectors: *Turn source*, *Idle / position*,
   *Brake*, *Turn ON*, *Turn off phase*, *Aux*
 
-Any event can be set to **— none —**, which means "paint nothing here". Note
-that **— none —** and the *Off (dark)* effect are not the same thing: *Off*
-is an effect that actively paints black, and a section with any brake effect
-assigned still gets the red safety floor while you are braking. If you want a
-section to ignore the brake completely, choose **— none —**.
+Any event can be set to **— none —**, which means "paint nothing here" — the
+layers below stay visible. That is not the same as the *Off (dark)* effect,
+which actively paints the section black. Both are honoured on the brake: a
+section that asks for *Off* stays dark while you brake, and one that asks for
+nothing keeps showing its position light. Only a section with a real brake
+effect gets the red safety floor.
 
 Use **↑ ↓** to reorder sections — the order *is* the wiring order — and
 **✕** to delete one. Rows alternate shading, and the preview above shades
