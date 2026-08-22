@@ -28,8 +28,9 @@ House rules for this codebase. They exist because each one was earned.
    `components/net_services/proto/ws_protocol.proto` *is* the protocol:
    nanopb regenerates the C bindings from it on every build, so the firmware
    cannot drift from it. The webpage decodes the same wire format by hand
-   (no build step there), so a protocol change updates the .proto, the
-   .options file and `webui/index.html` together.
+   (no bundler there — `tools/build_webui.sh` only inlines and gzips), so a
+   protocol change updates the .proto, the .options file and `webui/app.js`
+   together.
 
 ## Hardware / concurrency
 
@@ -55,6 +56,6 @@ House rules for this codebase. They exist because each one was earned.
 11. **Comments state constraints, not narration.** A comment earns its place
     by explaining what the code cannot say (why a core is pinned, why a
     buffer is static, what invariant a caller must hold).
-12. **Keep the UI minimal.** Factory effects + palette + zones cover the
+12. **Keep the UI minimal.** Factory effects + palette + sections cover the
     product. Any "test/preview" affordance drives the page view AND the real
     strip through the same mechanism, never two separate paths.

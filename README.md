@@ -9,16 +9,17 @@ ESP32 (M5Stamp Pico) on a custom opto-isolated interface PCB (see `pcb/`).
   optocouplers — turn inputs pulse at the flasher rate; the firmware learns
   the flasher period, persists it, and leaves "blink mode" 1.5× past the
   expected next flash.
-- Renders zones on one strip: `[left turn | center | right turn]`. Turn zones
-  alternate amber (or red) / low-red **in sync with the real flasher** — the
-  sweep animation is normalized to the flasher half-period. Everything else
-  shows the position light (dim red) or the brake light; the brake never
-  paints inside an actively blinking turn zone. The brake strobe intro
-  replays only after the brake was released for a configurable delay
-  (default 25 s).
+- Each strip is built as an ordered list of **sections** (up to 8, any
+  length): a section has its own animation direction, its own turn source
+  (left / right / none) and its own effect per event, so a bar can be laid out
+  however the bike needs it. A section blinks **in sync with the real
+  flasher** — the sweep is normalized to the flasher half-period — and while
+  it blinks its brake effect is skipped, so it only alternates position and
+  turn colors. The brake strobe intro replays only after the brake was
+  released for a configurable delay (default 25 s).
 - Hosts a config webpage (SoftAP `MotoLights` at http://192.168.4.1, and on
   the home network in APSTA mode): assign factory effects per event, tune the
-  named color palette (turn color amber/red/custom), set zones/LED count, and
+  named color palette (turn color amber/red/custom), build the sections, and
   test everything — the page shows the module's real frames streamed over a
   WebSocket at ~30 FPS. **The whole protocol (WebSocket and REST) is
   protobuf** (`firmware/components/net_services/proto/ws_protocol.proto`); there is no JSON anywhere.
@@ -60,8 +61,10 @@ After flashing, the page is unreachable until you press the button once.
 
 Host unit tests (no ESP-IDF needed): `firmware/test/host/run_tests.sh`
 
-After editing `firmware/webui/index.html`, run `firmware/tools/build_webui.sh`
-and rebuild.
+After editing anything in `firmware/webui/`, run `firmware/tools/build_webui.sh`
+and rebuild. It checks the page for dangling ids and undefined symbols, then
+inlines `style.css` and `app.js` into `index.html` and gzips the result: the
+sources stay split for editing, the module still serves one request.
 
 ## Layout
 
@@ -69,11 +72,12 @@ and rebuild.
 - `firmware/components/fx/` — effect model, evaluator, compositor, native factory effects
 - `firmware/components/input_conditioner/` — 1 kHz sampling, debounce, blinker tracker,
   brake-strobe holdoff, simulated-signal injection
-- `firmware/components/event_arbiter/` — inputs + config → layer stack (zones, priorities)
+- `firmware/components/event_arbiter/` — inputs + config → layer stack (sections, priorities)
 - `firmware/components/render_core/` — ~75 FPS render task (core 1) + control queue
 - `firmware/components/net_services/` — SoftAP+STA, REST API, WebSocket protobuf push,
   embedded web app
-- `firmware/webui/` — the single-file config page (display only, no lighting logic)
+- `firmware/webui/` — the config page: `index.html`, `style.css`, `app.js`
+  (display only, no lighting logic), inlined into one asset at build time
 - `firmware/docs/EFFECT_SPEC.md` — normative effect semantics
 - `firmware/components/net_services/proto/ws_protocol.proto` — WebSocket message contract
 - `pcb/` — schematic, layout, EasyEDA project

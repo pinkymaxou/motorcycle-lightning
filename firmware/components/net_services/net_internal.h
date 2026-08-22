@@ -21,5 +21,8 @@ esp_err_t staticFilesRegister(httpd_handle_t server);
 
 esp_err_t wsStreamStart(httpd_handle_t server);
 void wsStreamStop();
+/* httpd is closing this socket: forget it before the fd number is recycled
+ * for another connection. */
+void wsStreamOnSockClose(int fd);
 
 } // namespace NetServices

@@ -57,12 +57,7 @@ message WsMessage {
 
 // ---- REST ----
 
-message Zones {
-  uint32 left_end   = 1;
-  uint32 center_end = 2;
-}
-
-// Fixed set of Wi-Fi STA settings; pass is write-only (never echoed back).
+// Wi-Fi station settings; pass is write-only (never echoed back).
 message StaConfig {
   string ssid     = 1;
   string pass     = 2;   // PUT only; empty = keep current
@@ -70,34 +65,33 @@ message StaConfig {
   bool   pass_set = 4;   // GET only
 }
 
-// Effect ids are factory ids; empty string = disabled. Zone values follow
-// ZoneId: 0=full 1=left 2=center 3=right.
-message Assignments {
-  string idle       = 1;
-  string brake      = 2;
-  uint32 brake_zone = 3;
-  string turn_on    = 4;
-  string turn_off   = 5;
-  string aux        = 6;
-  uint32 aux_zone   = 7;
+// One contiguous run of LEDs inside a strip, in wiring order. Effect ids are
+// factory ids; an empty string means that event does not paint this section.
+// A section's own turn source decides when it blinks — and while it blinks,
+// its brake effect is skipped, so it only alternates position/turn colors.
+message Section {
+  uint32 led_count = 1;   // 0 = placeholder, occupies no LED
+  bool   reversed  = 2;   // animation direction inside the section
+  uint32 turn      = 3;   // TurnSource: 0=none 1=left 2=right
+  string idle      = 4;
+  string brake     = 5;
+  string turn_on   = 6;
+  string turn_off  = 7;
+  string aux       = 8;
 }
 
-// One physical output: its own geometry, hardware type and reaction to the
-// bike's signals. Zone values follow ZoneId: 0=full 1=left 2=center 3=right.
+// One physical output: its hardware, then the sections laid end to end. The
+// strip's LED count is the sum of the section lengths.
 message Strip {
-  uint32 led_count   = 1;   // 0 = strip not installed
+  reserved 1, 6, 7, 8;   // led_count, zones, assign, swap_sides (fixed zones)
+  reserved "led_count", "zones", "assign", "swap_sides";
   uint32 brightness  = 2;
   // LED controller family (led_strip models): 0=WS2812 1=SK6812 2=WS2811
   // 3=WS2816 (WS2816 carries 16 bits per color component).
   uint32 led_model   = 3;
   uint32 color_order = 4;   // wire order: 0=GRB 1=RGB 2=GRBW 3=RGBW
-  bool   reversed    = 5;
-  Zones  zones       = 6;
-  Assignments assign = 7;
-  // Which end of the strip is the bike's left: false = LED 1 on the left,
-  // true = the strip is installed the other way round (connector on the
-  // right), so the turn signals swap ends.
-  bool   swap_sides  = 8;
+  bool   reversed    = 5;   // hardware data direction
+  repeated Section sections = 9;
 }
 
 message Config {

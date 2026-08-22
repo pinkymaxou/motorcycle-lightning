@@ -4,7 +4,7 @@ This document is the single source of truth for effect semantics, implemented
 once in `components/fx/effect_eval.cpp`. Effects are defined as native
 constexpr step tables in `components/fx/factory_effects.cpp` — there is no
 JSON anywhere; the web UI receives only the module's rendered frames (see
-`docs/ws_protocol.proto`). If a client-side preview is ever reintroduced, it
+`components/net_services/proto/ws_protocol.proto`). If a client-side preview is ever reintroduced, it
 must implement this spec exactly.
 
 ## Model
@@ -20,9 +20,9 @@ evaluate(effect, t_ms, zone_len, mirror) -> RGBA[zone_len]
 
 ### Position
 
-Pixel `i` of a zone of `zone_len` pixels has position
+Pixel `i` of a section of `zone_len` pixels has position
 `pos = (i + 0.5) / zone_len` ∈ (0,1). If `mirror` is set, `pos := 1 − pos`.
-Effects are always authored zone-relative; one effect fits any zone size.
+Effects are always authored section-relative; one effect fits any section length.
 
 ### Time, steps, looping
 
@@ -86,24 +86,33 @@ to `1 + soft` (the trailing soft edge must clear the last pixel).*
 
 ### Compositing (device)
 
-Layers are painted in priority order — idle (full strip), aux, brake (its
-zone), turn-left (left zone, mirrored), turn-right (right zone) — turn effects
-are authored inner→outer (position 0 = the bike's center side), so the left
-zone mirrors and both sides sweep outward — with a single
-rule: **source-over alpha onto an opaque black RGB frame**. Priority orders
-painting, alpha decides visibility, zones decide territory. Turn layers pick
-`on_effect` / `off_effect` by the live signal phase. Turn sub-effect timelines
-are **normalized to the flasher**: layer time is scaled by
-`total_ms / (period_ms / 2)`, so the effect's full duration plays over exactly
-one signal phase — a sweep always fills the ON phase whatever the flasher
-rate. Other layers run in real time. The brake layer is
-clipped out of any turn zone whose signal is actively blinking — a blinking
-zone only ever alternates position/turn colors, never brake. The brake
-effect's intro (steps before `loop_from`) replays only if the brake was
-released for the configured holdoff (default 25 s); a quicker re-application
-starts the timeline at the loop segment. While the brake input is physically
-active, a post-composite red floor (R ≥ 64) applies to brake-zone pixels not
-claimed by an active turn signal.
+A strip is an ordered list of up to 8 **sections** laid end to end in wiring
+order; the strip's LED count is the sum of their lengths. Sections never
+overlap, so each one composites independently over its own range.
+
+Within a section the paint order is **idle, aux, brake, turn**, with a single
+blend rule: source-over alpha onto an opaque black RGB frame. Alpha decides
+visibility, the section decides territory. An unassigned event paints nothing.
+
+- `mirror` is the section's declared direction, not something derived from
+  where the section sits — a section reversed in the config reverses every
+  layer it paints.
+- A section blinks only if its own turn source (none / left / right) is in
+  blink mode. While it blinks, its **brake layer is skipped entirely**, so it
+  alternates its position and turn colors only.
+- Turn sub-effect timelines are **normalized to the flasher**: layer time is
+  scaled by `total_ms / (period_ms / 2)`, so the effect's full duration plays
+  over exactly one signal phase whatever the flasher rate. Other layers run in
+  real time.
+- Hazard (both signals blinking) resolves one master channel per strip — the
+  one that entered blink mode first, tie to the left — and every section
+  follows its phase, so sections and strips cannot drift apart.
+- The brake effect's intro (steps before `loop_from`) replays only if the
+  brake was released for the configured holdoff; a quicker re-application
+  starts the timeline at the loop segment.
+- While the brake input is physically active, a post-composite red floor
+  (R ≥ 64) applies to every section that has a brake effect assigned and is
+  not currently blinking.
 
 ### Output (device only)
 

@@ -1,6 +1,7 @@
 /* Boot order is safety-first: lighting runs from compiled-in fallbacks before
  * storage or network are touched; every later stage only upgrades it. */
 #include <atomic>
+#include <cstdio>
 #include <cstring>
 
 #include "freertos/FreeRTOS.h"
@@ -197,14 +198,25 @@ extern "C" void app_main()
     for (int i = 0; i < STRIP_COUNT; i++)
     {
         const StripConfig &sc = m_cfg.strips[i];
-        if (0 == sc.led_count)
+        const uint16_t total = stripTotalLeds(sc);
+        if (0 == total)
         {
             ESP_LOGI(TAG, "strip %d: not installed", i + 1);
             continue;
         }
-        ESP_LOGI(TAG, "strip %d: %u LEDs, zones [0,%u)[%u,%u)[%u,%u)", i + 1,
-                 sc.led_count, sc.zone_left_end, sc.zone_left_end,
-                 sc.zone_center_end, sc.zone_center_end, sc.led_count);
+        char layout[96] = {};
+        size_t used = 0;
+        for (int k = 0; k < sc.n_sections && used + 12 < sizeof(layout); k++)
+        {
+            const SectionConfig &sec = sc.sections[k];
+            const char *const turn = (TurnSource::Left == sec.turn)    ? "L"
+                                     : (TurnSource::Right == sec.turn) ? "R"
+                                                                       : "-";
+            used += snprintf(layout + used, sizeof(layout) - used, "[%u %s%s]",
+                             sec.led_count, turn, sec.reversed ? " rev" : "");
+        }
+        ESP_LOGI(TAG, "strip %d: %u LEDs, %u sections %s", i + 1, total,
+                 sc.n_sections, layout);
     }
     ESP_LOGI(TAG, "flasher period %ums", static_cast<unsigned>(stored_period));
 

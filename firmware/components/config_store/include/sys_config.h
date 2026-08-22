@@ -4,10 +4,12 @@
 #include <cstdint>
 #include "effect_model.h"
 
-constexpr uint32_t CFG_VERSION = 6;
+constexpr uint32_t CFG_VERSION = 7;
 constexpr uint16_t CFG_MAX_LEDS = 300;
+constexpr int CFG_MAX_SECTIONS = 8;   /* mirrored by ws_protocol.options */
 constexpr int CFG_STA_SSID_LEN = 33;
 constexpr int CFG_STA_PASS_LEN = 65;
+
 /* The PCB's two independent WS2812B outputs (see main/board_pins.h). */
 enum class StripId : uint8_t
 {
@@ -27,15 +29,6 @@ inline int stripIndex(const StripId id)
 {
     return static_cast<int>(id);
 }
-
-enum class ZoneId : uint8_t
-{
-    Full = 0,
-    Left,
-    Center,
-    Right,
-    Last = Right
-};
 
 /* Wire order of the color components, as supported by the led_strip driver.
  * The W component exists on RGBW strips; the renderer leaves it off. */
@@ -59,35 +52,75 @@ enum class LedModel : uint8_t
     Last = WS2816
 };
 
-/* One physical strip: its own geometry, its own hardware type and its own
- * reaction to the bike's signals. The strips share only the color palette
- * and the input-domain settings (flasher tracking, brake holdoff). */
-struct StripConfig
+/* Which turn signal drives a section (None = it never blinks). */
+enum class TurnSource : uint8_t
 {
-    uint16_t led_count;         /* 0 = strip disabled */
-    uint8_t  brightness;        /* output scale 0..255 */
-    LedModel led_model;
-    ColorOrder color_order;
-    bool     reversed;          /* flip strip direction at output */
-    /* Which end of the strip is the bike's left. False: LED 1 is on the
-     * left, so the low indices blink with the left signal. True: the strip
-     * is installed the other way round and the sides swap. */
-    bool     swap_sides;
+    None = 0,
+    Left,
+    Right,
+    Last = Right
+};
 
-    /* zones: left = [0, left_end), center = [left_end, center_end),
-     * right = [center_end, led_count) */
-    uint16_t zone_left_end;
-    uint16_t zone_center_end;
-
-    /* event -> effect assignments (factory ids; empty string = disabled) */
+/* One contiguous run of LEDs inside a strip, in wiring order. The hardware
+ * (model, color order, brightness, data direction) belongs to the strip; a
+ * section only decides what plays there and in which direction. An empty
+ * effect id means that event does not paint this section. */
+struct SectionConfig
+{
+    uint16_t   led_count;       /* 0 = placeholder, occupies no LED */
+    bool       reversed;        /* animation direction inside the section */
+    TurnSource turn;
     char fx_idle[Fx::ID_LEN];
     char fx_aux[Fx::ID_LEN];
     char fx_brake[Fx::ID_LEN];
-    char fx_turn_on[Fx::ID_LEN];   /* turn zone while the signal is ON */
-    char fx_turn_off[Fx::ID_LEN];  /* turn zone during the off phase */
-    ZoneId brake_zone;
-    ZoneId aux_zone;
+    char fx_turn_on[Fx::ID_LEN];   /* while the turn signal is ON */
+    char fx_turn_off[Fx::ID_LEN];  /* during the off phase */
 };
+
+/* One physical output: its hardware, then the sections laid end to end. The
+ * strip's LED count is the sum of the section lengths. */
+struct StripConfig
+{
+    uint8_t    brightness;      /* output scale 0..255 */
+    LedModel   led_model;
+    ColorOrder color_order;
+    bool       reversed;        /* flip strip direction at output (wiring) */
+    uint8_t    n_sections;      /* 0 = strip not installed */
+    SectionConfig sections[CFG_MAX_SECTIONS];
+};
+
+/* Sum of the section lengths; 0 = strip not installed. Saturates at
+ * CFG_MAX_LEDS so callers can size buffers from it unconditionally. */
+inline uint16_t stripTotalLeds(const StripConfig &sc)
+{
+    uint32_t total = 0;
+    const int n = (sc.n_sections < CFG_MAX_SECTIONS) ? sc.n_sections
+                                                     : CFG_MAX_SECTIONS;
+    for (int i = 0; i < n; i++)
+    {
+        total += sc.sections[i].led_count;
+    }
+    return (total > CFG_MAX_LEDS) ? CFG_MAX_LEDS : static_cast<uint16_t>(total);
+}
+
+/* The factory layout, shared by the stored defaults and by the compiled-in
+ * hard fallback so the two can never drift: one turn run at each end sweeping
+ * outwards, a brake bar in the middle. */
+struct DefaultSection
+{
+    uint16_t   led_count;
+    bool       reversed;
+    TurnSource turn;
+};
+
+constexpr DefaultSection CFG_DEFAULT_SECTIONS[] = {
+    { 12, true,  TurnSource::Left  },   /* sweeps toward the low index */
+    { 16, false, TurnSource::None  },
+    { 12, false, TurnSource::Right },
+};
+
+constexpr int CFG_DEFAULT_SECTION_COUNT =
+    sizeof(CFG_DEFAULT_SECTIONS) / sizeof(CFG_DEFAULT_SECTIONS[0]);
 
 struct SysConfig
 {

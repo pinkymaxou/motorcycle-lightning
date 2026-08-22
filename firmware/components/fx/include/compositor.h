@@ -8,7 +8,9 @@
 namespace Fx
 {
 
-constexpr int MAX_LAYERS = 6;
+/* Up to CFG_MAX_SECTIONS sections, each painting idle + aux + brake + turn.
+ * event_arbiter.cpp static_asserts that this covers its budget. */
+constexpr int MAX_LAYERS = 32;
 
 struct FxLayer
 {

@@ -281,6 +281,11 @@ esp_err_t wsHandler(httpd_req_t *req)
 
 } // namespace
 
+void wsStreamOnSockClose(const int fd)
+{
+    clientRemove(fd);
+}
+
 esp_err_t wsStreamStart(httpd_handle_t server)
 {
     m_server = server;

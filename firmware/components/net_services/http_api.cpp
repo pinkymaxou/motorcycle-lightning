@@ -14,6 +14,7 @@
 #include "esp_app_desc.h"
 #include "esp_heap_caps.h"
 #include "esp_timer.h"
+#include <unistd.h>
 
 #include "config_store.h"
 #include "render_core.h"
@@ -33,7 +34,11 @@ namespace
 const char *const TAG = "http_api";
 
 constexpr const char *CONTENT_TYPE_PB = "application/x-protobuf";
-constexpr size_t MAX_BODY = 2048;
+/* Sized from the generated worst-case message, so a .proto change resizes
+ * them automatically. Handlers (and httpd_queue_work callbacks) all run on
+ * the single httpd task, one at a time: these buffers are never re-entered,
+ * and a full section config would not fit on an 8 KB stack. */
+constexpr size_t MAX_BODY = motolights_Config_size;
 constexpr size_t HTTPD_STACK_BYTES = 8192;
 constexpr uint16_t HTTPD_MAX_URI_HANDLERS = 12;
 constexpr const char *AP_IP_STR = "192.168.4.1";
@@ -49,7 +54,7 @@ constexpr size_t ARRAY_LEN(T (&)[N])
     return N;
 }
 
-constexpr size_t CONFIG_BUF_BYTES = 1024;
+constexpr size_t CONFIG_BUF_BYTES = motolights_Config_size;
 constexpr size_t EFFECTS_BUF_BYTES = 768;
 constexpr size_t SYSINFO_BUF_BYTES = 1024;
 
@@ -57,6 +62,13 @@ static httpd_handle_t m_server;
 static SysConfig *m_cfg;      /* application's live config */
 static esp_timer_handle_t m_sta_apply_timer;
 static const PinDef *m_pins;
+static uint8_t m_config_buf[CONFIG_BUF_BYTES];   /* GET encode */
+static uint8_t m_body_buf[MAX_BODY];             /* PUT body */
+static SysConfig m_pending_cfg;                  /* PUT staging */
+
+static_assert(CFG_MAX_SECTIONS ==
+                  sizeof(motolights_Strip::sections) / sizeof(motolights_Section),
+              "proto Strip.sections max_count must match CFG_MAX_SECTIONS");
 static int m_n_pins;
 
 /* Applying a STA change can drop the very connection carrying the request:
@@ -132,52 +144,67 @@ bool effectIdKnown(const char *id)
 
 /* ---------- Config <-> protobuf (nanopb) ---------- */
 
+void sectionToProto(const SectionConfig &sec, motolights_Section *out)
+{
+    out->led_count = sec.led_count;
+    out->reversed = sec.reversed;
+    out->turn = static_cast<uint32_t>(sec.turn);
+    strlcpy(out->idle, sec.fx_idle, sizeof(out->idle));
+    strlcpy(out->brake, sec.fx_brake, sizeof(out->brake));
+    strlcpy(out->turn_on, sec.fx_turn_on, sizeof(out->turn_on));
+    strlcpy(out->turn_off, sec.fx_turn_off, sizeof(out->turn_off));
+    strlcpy(out->aux, sec.fx_aux, sizeof(out->aux));
+}
+
+void sectionFromProto(const motolights_Section &in, SectionConfig *sec)
+{
+    sec->led_count = static_cast<uint16_t>(in.led_count);
+    sec->reversed = in.reversed;
+    sec->turn = static_cast<TurnSource>(in.turn);
+    strlcpy(sec->fx_idle, in.idle, sizeof(sec->fx_idle));
+    strlcpy(sec->fx_brake, in.brake, sizeof(sec->fx_brake));
+    strlcpy(sec->fx_turn_on, in.turn_on, sizeof(sec->fx_turn_on));
+    strlcpy(sec->fx_turn_off, in.turn_off, sizeof(sec->fx_turn_off));
+    strlcpy(sec->fx_aux, in.aux, sizeof(sec->fx_aux));
+}
+
 void stripToProto(const StripConfig &sc, motolights_Strip *out)
 {
-    out->led_count = sc.led_count;
     out->brightness = sc.brightness;
     out->led_model = static_cast<uint32_t>(sc.led_model);
     out->color_order = static_cast<uint32_t>(sc.color_order);
     out->reversed = sc.reversed;
-    out->swap_sides = sc.swap_sides;
 
-    out->has_zones = true;
-    out->zones.left_end = sc.zone_left_end;
-    out->zones.center_end = sc.zone_center_end;
-
-    out->has_assign = true;
-    strlcpy(out->assign.idle, sc.fx_idle, sizeof(out->assign.idle));
-    strlcpy(out->assign.brake, sc.fx_brake, sizeof(out->assign.brake));
-    out->assign.brake_zone = static_cast<uint32_t>(sc.brake_zone);
-    strlcpy(out->assign.turn_on, sc.fx_turn_on, sizeof(out->assign.turn_on));
-    strlcpy(out->assign.turn_off, sc.fx_turn_off, sizeof(out->assign.turn_off));
-    strlcpy(out->assign.aux, sc.fx_aux, sizeof(out->assign.aux));
-    out->assign.aux_zone = static_cast<uint32_t>(sc.aux_zone);
+    out->sections_count = (sc.n_sections < CFG_MAX_SECTIONS) ? sc.n_sections
+                                                             : CFG_MAX_SECTIONS;
+    for (pb_size_t i = 0; i < out->sections_count; i++)
+    {
+        sectionToProto(sc.sections[i], &out->sections[i]);
+    }
 }
 
 void stripFromProto(const motolights_Strip &in, StripConfig *sc)
 {
     *sc = StripConfig{};        /* a PUT carries the whole strip */
-    sc->led_count = static_cast<uint16_t>(in.led_count);
     sc->brightness = static_cast<uint8_t>(in.brightness);
     sc->led_model = static_cast<LedModel>(in.led_model);
     sc->color_order = static_cast<ColorOrder>(in.color_order);
     sc->reversed = in.reversed;
-    sc->swap_sides = in.swap_sides;
-    sc->zone_left_end = static_cast<uint16_t>(in.zones.left_end);
-    sc->zone_center_end = static_cast<uint16_t>(in.zones.center_end);
-    strlcpy(sc->fx_idle, in.assign.idle, sizeof(sc->fx_idle));
-    strlcpy(sc->fx_brake, in.assign.brake, sizeof(sc->fx_brake));
-    sc->brake_zone = static_cast<ZoneId>(in.assign.brake_zone);
-    strlcpy(sc->fx_turn_on, in.assign.turn_on, sizeof(sc->fx_turn_on));
-    strlcpy(sc->fx_turn_off, in.assign.turn_off, sizeof(sc->fx_turn_off));
-    strlcpy(sc->fx_aux, in.assign.aux, sizeof(sc->fx_aux));
-    sc->aux_zone = static_cast<ZoneId>(in.assign.aux_zone);
+
+    const pb_size_t count = (in.sections_count < CFG_MAX_SECTIONS)
+                                ? in.sections_count
+                                : CFG_MAX_SECTIONS;
+    sc->n_sections = static_cast<uint8_t>(count);
+    for (pb_size_t i = 0; i < count; i++)
+    {
+        sectionFromProto(in.sections[i], &sc->sections[i]);
+    }
 }
 
 size_t encodeConfig(const SysConfig &cfg, uint8_t *out, const size_t cap)
 {
-    motolights_Config msg = motolights_Config_init_zero;
+    static motolights_Config msg;
+    msg = motolights_Config_init_zero;
 
     msg.strips_count = STRIP_COUNT;
     for (int i = 0; i < STRIP_COUNT; i++)
@@ -214,7 +241,8 @@ size_t encodeConfig(const SysConfig &cfg, uint8_t *out, const size_t cap)
  * the page clears an effect assignment), not "keep the old value". */
 bool decodeConfig(const uint8_t *data, const size_t len, SysConfig *cfg)
 {
-    motolights_Config msg = motolights_Config_init_zero;
+    static motolights_Config msg;
+    msg = motolights_Config_init_zero;
     pb_istream_t stream = pb_istream_from_buffer(data, len);
     if (!pb_decode(&stream, motolights_Config_fields, &msg))
     {
@@ -243,26 +271,24 @@ bool decodeConfig(const uint8_t *data, const size_t len, SysConfig *cfg)
 
 esp_err_t hConfigGet(httpd_req_t *req)
 {
-    uint8_t out[1024];
-    const size_t len = encodeConfig(*m_cfg, out, sizeof(out));
+    const size_t len = encodeConfig(*m_cfg, m_config_buf, sizeof(m_config_buf));
     if (0 == len)
     {
         return httpd_resp_send_500(req);
     }
-    return sendPb(req, out, len);
+    return sendPb(req, m_config_buf, len);
 }
 
 esp_err_t hConfigPut(httpd_req_t *req)
 {
-    uint8_t body[MAX_BODY];
-    const size_t len = readBody(req, body, sizeof(body));
+    const size_t len = readBody(req, m_body_buf, sizeof(m_body_buf));
     if (0 == len)
     {
         return sendError(req, "400 Bad Request", "missing/oversized body");
     }
 
-    SysConfig tmp;
-    if (!decodeConfig(body, len, &tmp))
+    SysConfig &tmp = m_pending_cfg;
+    if (!decodeConfig(m_body_buf, len, &tmp))
     {
         return sendError(req, "400 Bad Request", "invalid protobuf");
     }
@@ -279,18 +305,23 @@ esp_err_t hConfigPut(httpd_req_t *req)
     if (!ConfigStore::validate(&tmp))
     {
         return sendError(req, "400 Bad Request",
-                         "invalid config (led_count 1-300, zones ordered)");
+                         "invalid config (max 8 sections and 300 LEDs per strip)");
     }
     for (int i = 0; i < STRIP_COUNT; i++)
     {
         const StripConfig &sc = tmp.strips[i];
-        const char *const refs[] = { sc.fx_idle, sc.fx_aux, sc.fx_brake,
-                                     sc.fx_turn_on, sc.fx_turn_off };
-        for (size_t k = 0; k < sizeof(refs) / sizeof(refs[0]); k++)
+        for (int k = 0; k < sc.n_sections; k++)
         {
-            if (!effectIdKnown(refs[k]))
+            const SectionConfig &sec = sc.sections[k];
+            const char *const refs[] = { sec.fx_idle, sec.fx_aux, sec.fx_brake,
+                                         sec.fx_turn_on, sec.fx_turn_off };
+            for (size_t r = 0; r < sizeof(refs) / sizeof(refs[0]); r++)
             {
-                return sendError(req, "400 Bad Request", "unknown effect id");
+                if (!effectIdKnown(refs[r]))
+                {
+                    return sendError(req, "400 Bad Request",
+                                     "unknown effect id");
+                }
             }
         }
     }
@@ -336,11 +367,15 @@ esp_err_t hEffectsGet(httpd_req_t *req)
         for (int k = 0; k < STRIP_COUNT && !assigned; k++)
         {
             const StripConfig &sc = m_cfg->strips[k];
-            assigned = 0 == std::strcmp(sc.fx_idle, fe->id) ||
-                       0 == std::strcmp(sc.fx_aux, fe->id) ||
-                       0 == std::strcmp(sc.fx_brake, fe->id) ||
-                       0 == std::strcmp(sc.fx_turn_on, fe->id) ||
-                       0 == std::strcmp(sc.fx_turn_off, fe->id);
+            for (int j = 0; j < sc.n_sections && !assigned; j++)
+            {
+                const SectionConfig &sec = sc.sections[j];
+                assigned = 0 == std::strcmp(sec.fx_idle, fe->id) ||
+                           0 == std::strcmp(sec.fx_aux, fe->id) ||
+                           0 == std::strcmp(sec.fx_brake, fe->id) ||
+                           0 == std::strcmp(sec.fx_turn_on, fe->id) ||
+                           0 == std::strcmp(sec.fx_turn_off, fe->id);
+            }
         }
         motolights_EffectInfo &e = msg.effects[msg.effects_count++];
         strlcpy(e.id, fe->id, sizeof(e.id));
@@ -464,6 +499,17 @@ esp_err_t hCommandPost(httpd_req_t *req)
     return sendOk(req);
 }
 
+/* httpd hands every closing socket here (on its own task). Dropping the fd
+ * from the WebSocket client list before it is recycled is what keeps a push
+ * from landing in an unrelated HTTP response. Closing the fd is our job once
+ * this hook is installed. */
+void onSockClose(httpd_handle_t hd, int sockfd)
+{
+    (void)hd;
+    wsStreamOnSockClose(sockfd);
+    close(sockfd);
+}
+
 struct Route
 {
     const char *uri;
@@ -504,6 +550,7 @@ esp_err_t httpStart(SysConfig *live_cfg)
     cfg.stack_size = HTTPD_STACK_BYTES;
     cfg.max_uri_handlers = HTTPD_MAX_URI_HANDLERS;
     cfg.lru_purge_enable = true;
+    cfg.close_fn = onSockClose;
 
     esp_err_t err = httpd_start(&m_server, &cfg);
     if (ESP_OK != err)
