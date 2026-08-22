@@ -187,14 +187,23 @@ window.addEventListener('beforeunload',e=>{
   e.returnValue=LEAVE_WARNING;   /* browsers show their own wording */
 });
 
+/* The tab is in the URL hash, so a tab can be linked to and reloaded onto —
+   and so the manual's screenshots can be taken one tab at a time. */
+function showTab(name){
+  const b=document.querySelector(`nav button[data-tab="${name}"]`);
+  if(!b)return;
+  document.querySelectorAll('nav button').forEach(x=>x.classList.remove('act'));
+  document.querySelectorAll('section').forEach(x=>x.classList.remove('act'));
+  b.classList.add('act');$('tab-'+name).classList.add('act');
+  if('system'===name||'pinout'===name)loadSysinfo();
+}
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{
   if(dirty&&'setup'===document.querySelector('nav button.act').dataset.tab&&
      !confirm(LEAVE_WARNING))return;
-  document.querySelectorAll('nav button').forEach(x=>x.classList.remove('act'));
-  document.querySelectorAll('section').forEach(x=>x.classList.remove('act'));
-  b.classList.add('act');$('tab-'+b.dataset.tab).classList.add('act');
-  if(b.dataset.tab==='system'||b.dataset.tab==='pinout')loadSysinfo();
+  location.hash=b.dataset.tab;
+  showTab(b.dataset.tab);
 });
+window.addEventListener('hashchange',()=>showTab(location.hash.slice(1)));
 
 /* Room reserved for the feed marker, on whichever end the data enters. */
 const FEED_MARGIN=26;
@@ -869,6 +878,7 @@ function renderAll(){renderShared();renderPalette();renderSetup();renderLiveStri
     renderAll();
     loadSysinfo();
     wsConnect();
+    if(location.hash)showTab(location.hash.slice(1));
   }catch(e){
     toast('cannot reach module: '+e,true);
     $('linkinfo').textContent='offline';
