@@ -4,10 +4,11 @@
 # a firmware that builds here but not locally is worse than no CI at all.
 name: build
 
+# Push only, every branch. Adding pull_request on top ran the whole thing
+# twice for the same commit (both events fire for a branch in this repo), and
+# a pull request shows the push run's checks anyway.
 on:
   push:
-    branches: [master]      # branches are covered by their pull request
-  pull_request:
   workflow_dispatch:
 
 jobs:
