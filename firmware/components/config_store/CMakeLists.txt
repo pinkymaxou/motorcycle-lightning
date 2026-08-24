@@ -1,5 +1,5 @@
 idf_component_register(
-    SRCS "config_nvs.cpp"
+    SRCS "config_nvs.cpp" "config_proto.cpp" "config_rules.cpp"
     INCLUDE_DIRS "include"
-    REQUIRES fx nvs_flash
+    REQUIRES fx nvs_flash protocol
 )

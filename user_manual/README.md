@@ -155,7 +155,7 @@ These come from the bike itself, so they apply to every strip:
 - **Brake strobe holdoff** — the brake's flash intro only replays if the
   brake was released for at least this long, so stop-and-go traffic does not
   turn into a strobe show. `0` replays every time.
-- **Hazard flash** / **Hazard off phase** — what every section plays while
+- **Hazard ON** / **Hazard off phase** — what every section plays while
   *both* signals blink. Leave them on *same as turn signal* and hazard looks
   like two turn signals at once; set the flash to **Turn ON (solid)** and the
   sweep stays for real turns only. A sweep says "I am going that way", which

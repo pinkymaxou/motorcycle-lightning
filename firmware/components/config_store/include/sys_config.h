@@ -4,7 +4,6 @@
 #include <cstdint>
 #include "effect_model.h"
 
-constexpr uint32_t CFG_VERSION = 9;
 constexpr uint16_t CFG_MAX_LEDS = 300;
 constexpr int CFG_MAX_SECTIONS = 8;   /* mirrored by ws_protocol.options */
 constexpr int CFG_STA_SSID_LEN = 33;
@@ -123,8 +122,6 @@ constexpr int CFG_DEFAULT_SECTION_COUNT =
 
 struct SysConfig
 {
-    uint32_t version;
-
     StripConfig strips[STRIP_COUNT];
 
     /* fixed semantic color set (Fx::FxColor) — values editable only */

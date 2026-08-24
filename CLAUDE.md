@@ -40,8 +40,9 @@ After editing anything in `firmware/webui/`, run `build_webui.sh` and commit
 the regenerated `components/net_services/webui_dist/index.html.gz` — CI fails
 if it is stale.
 
-Changing `sys_config.h` means bumping `CFG_VERSION`: the stored config is the
-raw struct, so the layout *is* the format.
+The config is stored as protobuf, with the same codec the API uses, so adding
+a field to `ws_protocol.proto` costs nobody their settings. Never reuse or
+repurpose a field number — reserve it. `sys_config.h` is free to change.
 
 ## Before merging into master — regenerate the user manual
 

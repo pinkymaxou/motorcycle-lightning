@@ -43,15 +43,17 @@ House rules for this codebase. They exist because each one was earned.
    strips split the rest (`RMT_MEM_BLOCK_SYMBOLS` in `led_driver.cpp`, with a
    `static_assert`). Over-asking does not degrade — the last strip created
    gets `ESP_ERR_NOT_FOUND` and stays dark.
-7. **The stored config is a raw struct, so it is guarded three ways.**
-   `SysConfig` goes into NVS byte for byte (key `syscfg`, namespace
-   `motolight`), prefixed by a CRC32 over it. `load()` accepts it only if the
-   blob length matches `sizeof(StoredConfig)`, the CRC matches, **and**
-   `validate()` passes; anything else boots the compiled defaults with the
-   purple status LED. Any change to `sys_config.h` — a field added, resized
-   or reordered — therefore means bumping `CFG_VERSION`, because the layout
-   *is* the format. The learned flasher period lives in its own key
-   (`blinkms`) so it survives that reset.
+7. **The stored config is protobuf, and it is guarded three ways.**
+   `SysConfig` goes into NVS as the *same* protobuf encoding the API speaks
+   (key `syscfgpb`, namespace `motolight`), prefixed by a CRC32 over it —
+   one codec in `config_store/config_proto.cpp`, so wire and flash cannot
+   drift apart. `load()` accepts it only if the CRC matches, the message
+   decodes, **and** `validate()` passes; anything else boots the compiled
+   defaults with the purple status LED. Adding a field to the .proto is
+   therefore additive: an older build skips what it does not know, a newer
+   one defaults it, and nobody has to re-enter their configuration. Removing
+   or repurposing a field number is the breaking move — reserve it instead.
+   The learned flasher period lives in its own key (`blinkms`).
 8. **Single-writer snapshots over locks.** Cross-task state is published
    with C11 atomics by one writer and read by one reader (input snapshot,
    frame mirror, stats). Blocking flash writes (NVS) happen only in

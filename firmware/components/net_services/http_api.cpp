@@ -124,157 +124,20 @@ size_t readBody(httpd_req_t* req, uint8_t* buf, const size_t cap)
     return got;
 }
 
-uint32_t packColor(const Fx::RgbaColor c)
-{
-    return (static_cast<uint32_t>(c.r) << 24) | (static_cast<uint32_t>(c.g) << 16) |
-           (static_cast<uint32_t>(c.b) << 8) | c.a;
-}
-
-Fx::RgbaColor unpackColor(const uint32_t v)
-{
-    return Fx::RgbaColor{ static_cast<uint8_t>(v >> 24),
-                          static_cast<uint8_t>(v >> 16),
-                          static_cast<uint8_t>(v >> 8),
-                          static_cast<uint8_t>(v) };
-}
-
-bool effectIdKnown(const char* id)
+/* An empty id means "this event paints nothing", which is always legal. */
+bool effectIdKnown(const char* const id)
 {
     return '\0' == id[0] || Fx::factoryExists(id);
 }
 
-/* ---------- Config <-> protobuf (nanopb) ---------- */
-
-void sectionToProto(const SectionConfig& sec, motolights_Section* out)
-{
-    out->led_count = sec.led_count;
-    out->reversed = sec.reversed;
-    out->turn = static_cast<uint32_t>(sec.turn);
-    strlcpy(out->idle, sec.fx_idle, sizeof(out->idle));
-    strlcpy(out->brake, sec.fx_brake, sizeof(out->brake));
-    strlcpy(out->turn_on, sec.fx_turn_on, sizeof(out->turn_on));
-    strlcpy(out->turn_off, sec.fx_turn_off, sizeof(out->turn_off));
-    strlcpy(out->aux, sec.fx_aux, sizeof(out->aux));
-}
-
-void sectionFromProto(const motolights_Section& in, SectionConfig* sec)
-{
-    sec->led_count = static_cast<uint16_t>(in.led_count);
-    sec->reversed = in.reversed;
-    sec->turn = static_cast<TurnSource>(in.turn);
-    strlcpy(sec->fx_idle, in.idle, sizeof(sec->fx_idle));
-    strlcpy(sec->fx_brake, in.brake, sizeof(sec->fx_brake));
-    strlcpy(sec->fx_turn_on, in.turn_on, sizeof(sec->fx_turn_on));
-    strlcpy(sec->fx_turn_off, in.turn_off, sizeof(sec->fx_turn_off));
-    strlcpy(sec->fx_aux, in.aux, sizeof(sec->fx_aux));
-}
-
-void stripToProto(const StripConfig& sc, motolights_Strip* out)
-{
-    out->led_model = static_cast<uint32_t>(sc.led_model);
-    out->color_order = static_cast<uint32_t>(sc.color_order);
-    out->reversed = sc.reversed;
-
-    out->sections_count = (sc.n_sections < CFG_MAX_SECTIONS) ? sc.n_sections
-                                                             : CFG_MAX_SECTIONS;
-    for (pb_size_t i = 0; i < out->sections_count; i++)
-    {
-        sectionToProto(sc.sections[i], &out->sections[i]);
-    }
-}
-
-void stripFromProto(const motolights_Strip& in, StripConfig* sc)
-{
-    *sc = StripConfig{};        /* a PUT carries the whole strip */
-    sc->led_model = static_cast<LedModel>(in.led_model);
-    sc->color_order = static_cast<ColorOrder>(in.color_order);
-    sc->reversed = in.reversed;
-
-    const pb_size_t count = (in.sections_count < CFG_MAX_SECTIONS)
-                                ? in.sections_count
-                                : CFG_MAX_SECTIONS;
-    sc->n_sections = static_cast<uint8_t>(count);
-    for (pb_size_t i = 0; i < count; i++)
-    {
-        sectionFromProto(in.sections[i], &sc->sections[i]);
-    }
-}
-
-size_t encodeConfig(const SysConfig& cfg, uint8_t* out, const size_t cap)
-{
-    static motolights_Config msg;
-    msg = motolights_Config_init_zero;
-
-    msg.strips_count = STRIP_COUNT;
-    for (int i = 0; i < STRIP_COUNT; i++)
-    {
-        stripToProto(cfg.strips[i], &msg.strips[i]);
-    }
-
-    msg.colors_count = Fx::COLOR_COUNT;
-    for (int i = 0; i < Fx::COLOR_COUNT; i++)
-    {
-        msg.colors[i] = packColor(cfg.palette.colors[i]);
-    }
-
-    strlcpy(msg.hazard_on, cfg.fx_hazard_on, sizeof(msg.hazard_on));
-    strlcpy(msg.hazard_off, cfg.fx_hazard_off, sizeof(msg.hazard_off));
-    msg.blink_exit_x10 = cfg.blink_exit_x10;
-    msg.brake_holdoff_s = cfg.brake_holdoff_s;
-
-    msg.has_sta = true;
-    strlcpy(msg.sta.ssid, cfg.sta_ssid, sizeof(msg.sta.ssid));
-    /* password is write-only: never echoed back, only its presence */
-    msg.sta.active = cfg.sta_active;
-    msg.sta.pass_set = '\0' != cfg.sta_pass[0];
-
-    pb_ostream_t stream = pb_ostream_from_buffer(out, cap);
-    if (!pb_encode(&stream, motolights_Config_fields, &msg))
-    {
-        ESP_LOGE(TAG, "config encode failed: %s", PB_GET_ERROR(&stream));
-        return 0;
-    }
-    return stream.bytes_written;
-}
-
-/* The message is authoritative: a PUT replaces the configuration. Absent
- * fields therefore mean "unset" (proto3 omits empty strings, which is how
- * the page clears an effect assignment), not "keep the old value". */
-bool decodeConfig(const uint8_t* data, const size_t len, SysConfig* cfg)
-{
-    static motolights_Config msg;
-    msg = motolights_Config_init_zero;
-    pb_istream_t stream = pb_istream_from_buffer(data, len);
-    if (!pb_decode(&stream, motolights_Config_fields, &msg))
-    {
-        ESP_LOGW(TAG, "config decode failed: %s", PB_GET_ERROR(&stream));
-        return false;
-    }
-
-    *cfg = SysConfig{};
-    cfg->version = CFG_VERSION;
-
-    for (pb_size_t i = 0; i < msg.strips_count && i < STRIP_COUNT; i++)
-    {
-        stripFromProto(msg.strips[i], &cfg->strips[i]);
-    }
-    for (pb_size_t i = 0; i < msg.colors_count && i < Fx::COLOR_COUNT; i++)
-    {
-        cfg->palette.colors[i] = unpackColor(msg.colors[i]);
-    }
-    strlcpy(cfg->fx_hazard_on, msg.hazard_on, sizeof(cfg->fx_hazard_on));
-    strlcpy(cfg->fx_hazard_off, msg.hazard_off, sizeof(cfg->fx_hazard_off));
-    cfg->blink_exit_x10 = static_cast<uint8_t>(msg.blink_exit_x10);
-    cfg->brake_holdoff_s = static_cast<uint16_t>(msg.brake_holdoff_s);
-    strlcpy(cfg->sta_ssid, msg.sta.ssid, sizeof(cfg->sta_ssid));
-    strlcpy(cfg->sta_pass, msg.sta.pass, sizeof(cfg->sta_pass));
-    cfg->sta_active = msg.sta.active;
-    return true;
-}
+/* Config <-> protobuf lives in config_store: the same encoding goes on the
+ * wire and into flash, so the two can never drift apart. */
 
 esp_err_t hConfigGet(httpd_req_t* req)
 {
-    const size_t len = encodeConfig(*m_cfg, m_config_buf, sizeof(m_config_buf));
+    const size_t len = ConfigStore::encode(*m_cfg, m_config_buf,
+                                          sizeof(m_config_buf),
+                                          ConfigStore::Secrets::Omit);
     if (0 == len)
     {
         return httpd_resp_send_500(req);
@@ -291,7 +154,7 @@ esp_err_t hConfigPut(httpd_req_t* req)
     }
 
     SysConfig& tmp = m_pending_cfg;
-    if (!decodeConfig(m_body_buf, len, &tmp))
+    if (!ConfigStore::decode(m_body_buf, len, &tmp))
     {
         return sendError(req, "400 Bad Request", "invalid protobuf");
     }
