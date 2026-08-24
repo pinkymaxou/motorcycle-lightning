@@ -102,6 +102,10 @@ message Config {
   // Input domain, shared: the bike has one flasher and one brake line.
   uint32 blink_exit_x10   = 3;
   uint32 brake_holdoff_s  = 4;
+  // Hazard overrides, shared by both strips. "" = sections keep their own
+  // turn effects for that phase.
+  string hazard_on        = 6;
+  string hazard_off       = 7;
   StaConfig sta           = 5;
 }
 

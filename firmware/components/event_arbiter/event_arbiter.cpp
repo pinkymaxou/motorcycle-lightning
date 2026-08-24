@@ -154,8 +154,13 @@ int buildLayers(const CondState& in, const StripSet& set,
         if (blinking)
         {
             const bool left = (TurnSource::Left == sec.turn);
-            const Fx::FxEffect* const fx =
-                (left ? on_l : on_r) ? sec.turn_on : sec.turn_off;
+            /* Hazard is not a direction: it may replace either phase, and
+             * each phase falls back on its own. */
+            const Fx::FxEffect* const on_fx =
+                (hazard && nullptr != set.hazard_on) ? set.hazard_on : sec.turn_on;
+            const Fx::FxEffect* const off_fx =
+                (hazard && nullptr != set.hazard_off) ? set.hazard_off : sec.turn_off;
+            const Fx::FxEffect* const fx = (left ? on_l : on_r) ? on_fx : off_fx;
             if (nullptr != fx)
             {
                 Fx::FxLayer* const l =

@@ -155,6 +155,11 @@ These come from the bike itself, so they apply to every strip:
 - **Brake strobe holdoff** — the brake's flash intro only replays if the
   brake was released for at least this long, so stop-and-go traffic does not
   turn into a strobe show. `0` replays every time.
+- **Hazard flash** / **Hazard off phase** — what every section plays while
+  *both* signals blink. Leave them on *same as turn signal* and hazard looks
+  like two turn signals at once; set the flash to **Turn ON (solid)** and the
+  sweep stays for real turns only. A sweep says "I am going that way", which
+  is not what hazard means.
 
 ### Colours
 
@@ -234,7 +239,8 @@ leaving blink mode — it never cuts a flash short.
 
 **Hazards.** With both signals blinking, both sides lock to the one that
 started first, so the two ends of the bar — and both strips — stay in step
-instead of drifting apart.
+instead of drifting apart. If you gave hazard its own effect in Setup, it
+replaces what every section would otherwise play, on both sides at once.
 
 **Braking.** While the brake input is on, every section that has a brake
 effect gets a red floor, so it can never be darker than a visible red. A

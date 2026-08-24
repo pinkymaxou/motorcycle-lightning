@@ -217,6 +217,8 @@ size_t encodeConfig(const SysConfig& cfg, uint8_t* out, const size_t cap)
         msg.colors[i] = packColor(cfg.palette.colors[i]);
     }
 
+    strlcpy(msg.hazard_on, cfg.fx_hazard_on, sizeof(msg.hazard_on));
+    strlcpy(msg.hazard_off, cfg.fx_hazard_off, sizeof(msg.hazard_off));
     msg.blink_exit_x10 = cfg.blink_exit_x10;
     msg.brake_holdoff_s = cfg.brake_holdoff_s;
 
@@ -260,6 +262,8 @@ bool decodeConfig(const uint8_t* data, const size_t len, SysConfig* cfg)
     {
         cfg->palette.colors[i] = unpackColor(msg.colors[i]);
     }
+    strlcpy(cfg->fx_hazard_on, msg.hazard_on, sizeof(cfg->fx_hazard_on));
+    strlcpy(cfg->fx_hazard_off, msg.hazard_off, sizeof(cfg->fx_hazard_off));
     cfg->blink_exit_x10 = static_cast<uint8_t>(msg.blink_exit_x10);
     cfg->brake_holdoff_s = static_cast<uint16_t>(msg.brake_holdoff_s);
     strlcpy(cfg->sta_ssid, msg.sta.ssid, sizeof(cfg->sta_ssid));
@@ -324,6 +328,10 @@ esp_err_t hConfigPut(httpd_req_t* req)
             }
         }
     }
+    if (!effectIdKnown(tmp.fx_hazard_on) || !effectIdKnown(tmp.fx_hazard_off))
+    {
+        return sendError(req, "400 Bad Request", "unknown effect id");
+    }
 
     const bool sta_changed =
         0 != std::strcmp(tmp.sta_ssid, m_cfg->sta_ssid) ||
@@ -376,6 +384,9 @@ esp_err_t hEffectsGet(httpd_req_t* req)
                            0 == std::strcmp(sec.fx_turn_off, fe->id);
             }
         }
+        assigned = assigned ||
+                   0 == std::strcmp(m_cfg->fx_hazard_on, fe->id) ||
+                   0 == std::strcmp(m_cfg->fx_hazard_off, fe->id);
         motolights_EffectInfo& e = msg.effects[msg.effects_count++];
         strlcpy(e.id, fe->id, sizeof(e.id));
         strlcpy(e.name, fe->name, sizeof(e.name));

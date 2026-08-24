@@ -4,7 +4,7 @@
 #include <cstdint>
 #include "effect_model.h"
 
-constexpr uint32_t CFG_VERSION = 8;
+constexpr uint32_t CFG_VERSION = 9;
 constexpr uint16_t CFG_MAX_LEDS = 300;
 constexpr int CFG_MAX_SECTIONS = 8;   /* mirrored by ws_protocol.options */
 constexpr int CFG_STA_SSID_LEN = 33;
@@ -129,6 +129,13 @@ struct SysConfig
 
     /* fixed semantic color set (Fx::FxColor) — values editable only */
     Fx::FxPalette palette;
+
+    /* Hazard is a whole-vehicle state, so its look is shared rather than
+     * per section: with both signals blinking, these replace the sections'
+     * turn effects. Empty = keep whatever the section already plays. A sweep
+     * says "I am going that way", which is not what hazard means. */
+    char fx_hazard_on[Fx::ID_LEN];
+    char fx_hazard_off[Fx::ID_LEN];
 
     /* input domain: shared, the bike has one flasher and one brake line */
     uint8_t  blink_exit_x10;    /* blink-mode exit factor x10 (12 = 1.2x) */

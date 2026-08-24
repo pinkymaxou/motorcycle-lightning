@@ -76,8 +76,14 @@
         <input type="number" id="holdoff" min="0" max="600" style="width:64px"> s
         <span class="muted">(0 = every time)</span></label>
     </div>
+    <div class="row">
+      <label>Hazard flash <select id="hazon"></select></label>
+      <label>Hazard off phase <select id="hazoff"></select></label>
+    </div>
     <p class="muted">These come from the bike's own signals, so they apply to
-    every strip. What each section does with them is set per section above.</p>
+    every strip. What each section does with them is set per section above.
+    Hazard replaces the turn animation on <b>every</b> section at once — a
+    sweep says "I am going that way", which is not what hazard means.</p>
   </div>
   <div class="card">
     <h2>Colors</h2>

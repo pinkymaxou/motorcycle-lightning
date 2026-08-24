@@ -25,7 +25,7 @@ int g_fail;
     } \
 } while (0)
 
-FxEffect g_on, g_off, g_idle, g_brake, g_aux;
+FxEffect g_on, g_off, g_idle, g_brake, g_aux, g_haz;
 
 void makeFill(FxEffect* fx, const char* id)
 {
@@ -68,6 +68,7 @@ StripSet makeSet()
     makeFill(&g_idle, "idle");
     makeFill(&g_brake, "brake");
     makeFill(&g_aux, "aux");
+    makeFill(&g_haz, "haz");
 
     const StripConfig sc = makeConfig();
     StripSet set;
@@ -200,6 +201,40 @@ void testHazardSyncsOnEarlierChannel()
 }
 
 /* A single active turn signal only lights the sections that follow it. */
+/* Hazard is not a direction: it can replace the turn animation on both sides
+ * at once, and each phase falls back on its own. */
+void testHazardOverridesTheTurnEffect()
+{
+    StripSet set = makeSet();
+    set.hazard_on = &g_haz;          /* off phase left untouched */
+
+    CondState in = {};
+    in.period_ms = 750;
+    in.left_blink = in.right_blink = true;
+    in.left_blink_start_ms = in.right_blink_start_ms = 500;
+    in.left_on = in.right_on = true;
+    in.left_phase_ms = in.right_phase_ms = 1000;
+
+    FxLayer layers[Fx::MAX_LAYERS];
+    int n = EventArbiter::buildLayers(in, set, layers);
+    CHECK(nullptr != layerOf(layers, n, set.sections[0], &g_haz));
+    CHECK(nullptr != layerOf(layers, n, set.sections[2], &g_haz));
+    CHECK(nullptr == layerOf(layers, n, set.sections[0], &g_on));
+
+    /* off phase: no override set, so the section keeps its own effect */
+    in.left_on = in.right_on = false;
+    n = EventArbiter::buildLayers(in, set, layers);
+    CHECK(nullptr != layerOf(layers, n, set.sections[0], &g_off));
+    CHECK(nullptr == layerOf(layers, n, set.sections[0], &g_haz));
+
+    /* one signal only: the override does not apply */
+    in.right_blink = false;
+    in.left_on = true;
+    n = EventArbiter::buildLayers(in, set, layers);
+    CHECK(nullptr != layerOf(layers, n, set.sections[0], &g_on));
+    CHECK(nullptr == layerOf(layers, n, set.sections[0], &g_haz));
+}
+
 void testSingleTurnUsesOwnChannel()
 {
     const StripSet set = makeSet();
@@ -380,6 +415,7 @@ int main()
     testLayoutOffsets();
     testIdlePerSection();
     testHazardSyncsOnEarlierChannel();
+    testHazardOverridesTheTurnEffect();
     testSingleTurnUsesOwnChannel();
     testBrakeSkippedInBlinkingSection();
     testBrakeFloorHonoursOff();

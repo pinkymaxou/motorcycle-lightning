@@ -85,6 +85,7 @@ function decodeStrip(u8){
 }
 function decodeConfig(u8){
   const c={strips:[],colors:[0,0,0,0],exit_x10:12,holdoff_s:0,
+    hazard_on:'',hazard_off:'',
     sta:{ssid:'',active:false,pass_set:false}};
   pbScan(u8,(f,v,s)=>{
     switch(f){
@@ -92,6 +93,8 @@ function decodeConfig(u8){
     case 2:c.colors=packedF32(s);break;
     case 3:c.exit_x10=v;break;
     case 4:c.holdoff_s=v;break;
+    case 6:c.hazard_on=TDEC.decode(s);break;
+    case 7:c.hazard_off=TDEC.decode(s);break;
     case 5:pbScan(s,(ff,vv,ss)=>{
       if(ff===1)c.sta.ssid=TDEC.decode(ss);
       else if(ff===3)c.sta.active=!!vv;
@@ -121,6 +124,7 @@ function encodeConfig(c,staPass){
   for(let i=0;i<STRIP_COUNT;i++)w.bytesAlways(1,encodeStrip(c.strips[i]));
   w.packedF32(2,c.colors);
   w.uintAlways(3,c.exit_x10);w.uintAlways(4,c.holdoff_s);
+  w.str(6,c.hazard_on);w.str(7,c.hazard_off);
   const s=pbW();
   s.str(1,c.sta.ssid);s.str(2,staPass||'');s.boolAlways(3,c.sta.active);
   w.bytesAlways(5,Array.from(s.out()));
@@ -506,6 +510,10 @@ function renderShared(){
   /* Per-section effects live in the section editor above; these two come from
      the bike's own signals and apply to every strip. */
   $('holdoff').value=cfg.holdoff_s;
+  const hazopts=(sel,none)=>[`<option value="">${none}</option>`,
+    ...fxIndex.map(e=>`<option value="${e.id}" ${sel===e.id?'selected':''}>${esc(e.name)}</option>`)].join('');
+  $('hazon').innerHTML=hazopts(cfg.hazard_on,'— same as turn signal —');
+  $('hazoff').innerHTML=hazopts(cfg.hazard_off,'— same as turn signal —');
   const tc=(cfg.colors[COLOR_TURN]>>>0);
   $('turncolor').value=tc===TURN_AMBER?'amber':tc===TURN_RED?'red':'custom';
 }
@@ -781,6 +789,8 @@ async function saveConfig(){
     }
   }
   cfg.holdoff_s=Math.max(0,Math.min(600,+$('holdoff').value||0));
+  cfg.hazard_on=$('hazon').value;
+  cfg.hazard_off=$('hazoff').value;
   const turn=$('turncolor').value;
   if(turn!=='custom')cfg.colors[COLOR_TURN]=turn==='red'?TURN_RED:TURN_AMBER;
   cfg.sta.ssid=$('stassid').value.trim();

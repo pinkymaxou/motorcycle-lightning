@@ -330,6 +330,10 @@ esp_err_t applyConfig(const SysConfig& cfg)
                                  Fx::FallbackRole::Position);
             sec.brake = loadEffect(bu, sec_cfg.fx_brake, cfg.palette,
                                    Fx::FallbackRole::Brake);
+            set.hazard_on = loadEffect(bu, cfg.fx_hazard_on, cfg.palette,
+                                       Fx::FallbackRole::TurnOn);
+            set.hazard_off = loadEffect(bu, cfg.fx_hazard_off, cfg.palette,
+                                        Fx::FallbackRole::TurnOff);
             /* Off is a deliberate "dark here", so it opts out of the floor. */
             sec.brake_floor = nullptr != sec.brake &&
                               0 != std::strcmp(sec_cfg.fx_brake, Fx::EFFECT_ID_OFF);

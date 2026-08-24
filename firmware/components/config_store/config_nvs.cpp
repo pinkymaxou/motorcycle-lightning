@@ -146,6 +146,10 @@ void defaults(SysConfig* cfg)
         cfg->palette.colors[i] = Fx::defaultColor(static_cast<Fx::FxColor>(i));
     }
 
+    /* empty: hazard looks like two turn signals until someone says otherwise */
+    cfg->fx_hazard_on[0] = '\0';
+    cfg->fx_hazard_off[0] = '\0';
+
     cfg->blink_exit_x10 = 12;   /* period + 20% grace for the next flash */
     cfg->brake_holdoff_s = 25;
 
@@ -157,6 +161,11 @@ void defaults(SysConfig* cfg)
 bool validate(const SysConfig* cfg)
 {
     if (CFG_VERSION != cfg->version)
+    {
+        return false;
+    }
+    if (!stringOk(cfg->fx_hazard_on, sizeof(cfg->fx_hazard_on)) ||
+        !stringOk(cfg->fx_hazard_off, sizeof(cfg->fx_hazard_off)))
     {
         return false;
     }
