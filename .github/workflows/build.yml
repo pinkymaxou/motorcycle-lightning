@@ -88,11 +88,23 @@ jobs:
             firmware/build/partition_table/partition-table.bin
           if-no-files-found: error
 
-  manual:
-    name: user manual
+  page:
+    name: page runtime + user manual
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      # The page's protobuf codec is hand-written and the static checker
+      # cannot see whether it still agrees with itself. This runs it.
+      - name: Config page — codecs round trip
+        run: |
+          BROWSER="$(command -v google-chrome || command -v chromium || true)"
+          if [ -z "$BROWSER" ]; then
+              sudo apt-get update
+              sudo apt-get install -y --no-install-recommends chromium-browser
+              BROWSER="$(command -v chromium-browser)"
+          fi
+          BROWSER="$BROWSER" firmware/tools/test_webui.sh
 
       # A manual that points at a screenshot nobody committed is worse than
       # one with no screenshots.

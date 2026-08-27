@@ -827,9 +827,36 @@ $('savewifi').onclick=saveConfig;
    the same PUT as any other change, so the module still validates it.
    Passwords are never in the file — the API does not hand them out. */
 const EXPORT_FORMAT=1;
+/* Colors are 0xRRGGBBAA inside the page; a file people read gets #RRGGBB and
+   the alpha spelled out as what it actually is — a brightness. */
+const colorToHex=v=>'#'+((v>>>8)&0xFFFFFF).toString(16).padStart(6,'0').toUpperCase();
+const colorFromHex=(hex,brightness)=>
+  (((parseInt(String(hex).replace('#',''),16)&0xFFFFFF)*256)+
+   (brightness&255))>>>0;
+function exportDoc(){
+  return {motolights:EXPORT_FORMAT,exported:new Date().toISOString(),
+    note:'passwords are not exported',
+    config:Object.assign({},cfg,{colors:cfg.colors.map((v,i)=>({
+      name:COLOR_NAMES[i],rgb:colorToHex(v>>>0),brightness:(v>>>0)&255}))})};
+}
+/* Merged onto a fresh shape so a file written by an older page (missing a
+   key that has since appeared) still opens. */
+function adoptDoc(doc){
+  if(EXPORT_FORMAT!==doc.motolights||!doc.config||!doc.config.strips)
+    throw 'not a MotoLights configuration file';
+  const base=decodeConfig(new Uint8Array());
+  const c=doc.config;
+  cfg=Object.assign(base,c,{
+    colors:(c.colors||[]).map((v,i)=>'object'===typeof v
+      ?colorFromHex(v.rgb,v.brightness):(v>>>0)||base.colors[i]),
+    sta:Object.assign(base.sta,c.sta||{}),
+    ap:Object.assign(base.ap,c.ap||{}),
+    strips:(c.strips||[]).map(st=>Object.assign(emptyStrip(),st,
+      {sections:(st.sections||[]).map(sec=>Object.assign(emptySection(),sec))})),
+  });
+}
 $('exportbtn').onclick=()=>{
-  const doc={motolights:EXPORT_FORMAT,exported:new Date().toISOString(),
-    note:'passwords are not exported',config:cfg};
+  const doc=exportDoc();
   const url=URL.createObjectURL(new Blob([JSON.stringify(doc,null,2)],
     {type:'application/json'}));
   const a=document.createElement('a');
@@ -844,20 +871,8 @@ $('importfile').onchange=async e=>{
   const f=e.target.files[0];
   if(!f)return;
   try{
-    const doc=JSON.parse(await f.text());
-    if(EXPORT_FORMAT!==doc.motolights||!doc.config||!doc.config.strips)
-      throw 'not a MotoLights configuration file';
-    /* Loaded into the page, not sent: you see it, then you press Save.
-       Merged onto a fresh shape so a file written by an older page (missing
-       a key that has since appeared) still opens. */
-    const base=decodeConfig(new Uint8Array());
-    const c=doc.config;
-    cfg=Object.assign(base,c,{
-      sta:Object.assign(base.sta,c.sta||{}),
-      ap:Object.assign(base.ap,c.ap||{}),
-      strips:(c.strips||[]).map(st=>Object.assign(emptyStrip(),st,
-        {sections:(st.sections||[]).map(sec=>Object.assign(emptySection(),sec))})),
-    });
+    /* Loaded into the page, not sent: you see it, then you press Save. */
+    adoptDoc(JSON.parse(await f.text()));
     renderAll();
     markDirty();
     toast('loaded — review it, then Save');
