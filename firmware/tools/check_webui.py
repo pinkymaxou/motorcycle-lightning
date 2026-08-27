@@ -21,7 +21,7 @@ BUILTINS = {
     'Map', 'Date', 'parseInt', 'parseFloat', 'isNaN', 'fetch', 'alert',
     'confirm', 'setTimeout', 'setInterval', 'clearTimeout', 'clearInterval',
     'requestAnimationFrame', 'console', 'encodeURIComponent',
-    'XMLHttpRequest', 'FileReader', 'Blob',
+    'XMLHttpRequest', 'FileReader', 'Blob', 'URL',
 }
 KEYWORDS = {
     'if', 'for', 'while', 'switch', 'catch', 'return', 'function', 'typeof',

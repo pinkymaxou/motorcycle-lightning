@@ -47,6 +47,8 @@ void testRoundTripKeepsEverything()
     std::strcpy(in.fx_hazard_on, "f_turn_on");
     in.blink_exit_x10 = 15;
     in.brake_holdoff_s = 30;
+    std::strcpy(in.ap_ssid, "MyMoto");
+    std::strcpy(in.ap_pass, "longenoughpass");
     std::strcpy(in.sta_ssid, "some-network");
     std::strcpy(in.sta_pass, "hunter2");
     in.sta_active = true;
@@ -74,6 +76,8 @@ void testRoundTripKeepsEverything()
     CHECK(15 == out.blink_exit_x10);
     CHECK(30 == out.brake_holdoff_s);
     CHECK(0 == std::strcmp("some-network", out.sta_ssid));
+    CHECK(0 == std::strcmp("MyMoto", out.ap_ssid));
+    CHECK(0 == std::strcmp("longenoughpass", out.ap_pass));
     CHECK(out.sta_active);
     CHECK(1 == out.palette.colors[0].r && 4 == out.palette.colors[0].a);
 
@@ -84,6 +88,8 @@ void testRoundTripKeepsEverything()
     SysConfig seen;
     CHECK(ConfigStore::decode(buf, wire, &seen));
     CHECK('\0' == seen.sta_pass[0]);
+    CHECK('\0' == seen.ap_pass[0]);
+    CHECK(0 == std::strcmp("MyMoto", seen.ap_ssid));
 }
 
 /* A config written by a build that knew more fields than this one must still
@@ -127,6 +133,15 @@ void testGarbageIsRejected()
     ConfigStore::defaults(&bad);
     bad.blink_exit_x10 = 99;
     CHECK(!ConfigStore::validate(&bad));
+    /* a named access point with a key WPA2 would refuse: the AP would never
+       start and the page would be unreachable */
+    ConfigStore::defaults(&bad);
+    std::strcpy(bad.ap_ssid, "MyMoto");
+    std::strcpy(bad.ap_pass, "short");
+    CHECK(!ConfigStore::validate(&bad));
+    std::strcpy(bad.ap_pass, "longenough");
+    CHECK(ConfigStore::validate(&bad));
+
     ConfigStore::defaults(&bad);
     std::memset(bad.strips[0].sections[0].fx_idle, 'x',
                 sizeof(bad.strips[0].sections[0].fx_idle));

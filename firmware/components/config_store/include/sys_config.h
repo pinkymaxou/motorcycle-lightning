@@ -6,8 +6,11 @@
 
 constexpr uint16_t CFG_MAX_LEDS = 300;
 constexpr int CFG_MAX_SECTIONS = 8;   /* mirrored by ws_protocol.options */
-constexpr int CFG_STA_SSID_LEN = 33;
-constexpr int CFG_STA_PASS_LEN = 65;
+constexpr int CFG_SSID_LEN = 33;
+constexpr int CFG_PASS_LEN = 65;
+/* WPA2 refuses anything shorter; the AP would simply fail to start, which
+ * would lock the config page away. */
+constexpr int CFG_AP_PASS_MIN = 8;
 
 /* The PCB's two independent WS2812B outputs (see main/board_pins.h). */
 enum class StripId : uint8_t
@@ -139,7 +142,12 @@ struct SysConfig
     uint16_t brake_holdoff_s;   /* brake intro replays after this release */
 
     /* home-network STA (SoftAP always on) */
-    char sta_ssid[CFG_STA_SSID_LEN];
-    char sta_pass[CFG_STA_PASS_LEN];
+    char sta_ssid[CFG_SSID_LEN];
+    char sta_pass[CFG_PASS_LEN];
     bool sta_active;
+
+    /* The module's own access point. An empty SSID means the compiled-in
+     * pair, so a module that was never configured still has a way in. */
+    char ap_ssid[CFG_SSID_LEN];
+    char ap_pass[CFG_PASS_LEN];
 };

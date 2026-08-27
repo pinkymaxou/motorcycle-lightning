@@ -86,7 +86,8 @@ function decodeStrip(u8){
 function decodeConfig(u8){
   const c={strips:[],colors:[0,0,0,0],exit_x10:12,holdoff_s:0,
     hazard_on:'',hazard_off:'',
-    sta:{ssid:'',active:false,pass_set:false}};
+    sta:{ssid:'',active:false,pass_set:false},
+    ap:{ssid:'',pass_set:false}};
   pbScan(u8,(f,v,s)=>{
     switch(f){
     case 1:c.strips.push(decodeStrip(s));break;
@@ -99,6 +100,9 @@ function decodeConfig(u8){
       if(ff===1)c.sta.ssid=TDEC.decode(ss);
       else if(ff===3)c.sta.active=!!vv;
       else if(ff===4)c.sta.pass_set=!!vv;});break;
+    case 8:pbScan(s,(ff,vv,ss)=>{
+      if(ff===1)c.ap.ssid=TDEC.decode(ss);
+      else if(ff===3)c.ap.pass_set=!!vv;});break;
     }
   });
   while(c.strips.length<STRIP_COUNT)c.strips.push(emptyStrip());
@@ -119,7 +123,7 @@ function encodeStrip(st){
   for(const sec of st.sections)w.bytesAlways(9,encodeSection(sec));
   return Array.from(w.out());
 }
-function encodeConfig(c,staPass){
+function encodeConfig(c,staPass,apPass){
   const w=pbW();
   for(let i=0;i<STRIP_COUNT;i++)w.bytesAlways(1,encodeStrip(c.strips[i]));
   w.packedF32(2,c.colors);
@@ -128,6 +132,9 @@ function encodeConfig(c,staPass){
   const s=pbW();
   s.str(1,c.sta.ssid);s.str(2,staPass||'');s.boolAlways(3,c.sta.active);
   w.bytesAlways(5,Array.from(s.out()));
+  const a=pbW();
+  a.str(1,c.ap.ssid);a.str(2,apPass||'');
+  w.bytesAlways(8,Array.from(a.out()));
   return w.out();
 }
 
@@ -502,6 +509,10 @@ async function loadIndex(){
   if(cfg)renderShared();
 }
 function renderWifi(){
+  $('apssid').value=cfg.ap.ssid;
+  $('appass').value='';
+  $('apnote').textContent=cfg.ap.pass_set?'password saved'
+    :cfg.ap.ssid?'no password — save one':'factory access point';
   $('stassid').value=cfg.sta.ssid;
   $('staactive').checked=cfg.sta.active;
   $('stanote').textContent=cfg.sta.pass_set?'password saved':'no password';
@@ -795,10 +806,13 @@ async function saveConfig(){
   if(turn!=='custom')cfg.colors[COLOR_TURN]=turn==='red'?TURN_RED:TURN_AMBER;
   cfg.sta.ssid=$('stassid').value.trim();
   cfg.sta.active=$('staactive').checked;
-  const pass=$('stapass').value;   /* empty = keep current */
+  cfg.ap.ssid=$('apssid').value.trim();
+  const pass=$('stapass').value;     /* empty = keep current */
+  const appass=$('appass').value;    /* same rule; the module checks it */
   try{
-    await api('config',{method:'PUT',body:encodeConfig(cfg,pass)});
+    await api('config',{method:'PUT',body:encodeConfig(cfg,pass,appass)});
     $('stapass').value='';
+    $('appass').value='';
     cfg=decodeConfig(await api('config'));
     renderAll();
     clearDirty();
@@ -807,6 +821,50 @@ async function saveConfig(){
 }
 $('savesetup').onclick=saveConfig;
 $('savewifi').onclick=saveConfig;
+/* ---- export / import ----
+   Plain JSON, written and read here rather than in the firmware: the module
+   has no business carrying a JSON writer, and an import goes back through
+   the same PUT as any other change, so the module still validates it.
+   Passwords are never in the file — the API does not hand them out. */
+const EXPORT_FORMAT=1;
+$('exportbtn').onclick=()=>{
+  const doc={motolights:EXPORT_FORMAT,exported:new Date().toISOString(),
+    note:'passwords are not exported',config:cfg};
+  const url=URL.createObjectURL(new Blob([JSON.stringify(doc,null,2)],
+    {type:'application/json'}));
+  const a=document.createElement('a');
+  a.href=url;
+  a.download='motolights-config-'+new Date().toISOString().slice(0,10)+'.json';
+  a.click();
+  URL.revokeObjectURL(url);
+  toast('exported ✓');
+};
+$('importbtn').onclick=()=>$('importfile').click();
+$('importfile').onchange=async e=>{
+  const f=e.target.files[0];
+  if(!f)return;
+  try{
+    const doc=JSON.parse(await f.text());
+    if(EXPORT_FORMAT!==doc.motolights||!doc.config||!doc.config.strips)
+      throw 'not a MotoLights configuration file';
+    /* Loaded into the page, not sent: you see it, then you press Save.
+       Merged onto a fresh shape so a file written by an older page (missing
+       a key that has since appeared) still opens. */
+    const base=decodeConfig(new Uint8Array());
+    const c=doc.config;
+    cfg=Object.assign(base,c,{
+      sta:Object.assign(base.sta,c.sta||{}),
+      ap:Object.assign(base.ap,c.ap||{}),
+      strips:(c.strips||[]).map(st=>Object.assign(emptyStrip(),st,
+        {sections:(st.sections||[]).map(sec=>Object.assign(emptySection(),sec))})),
+    });
+    renderAll();
+    markDirty();
+    toast('loaded — review it, then Save');
+  }catch(err){toast('import: '+err,true);}
+  finally{e.target.value='';}
+};
+
 $('restorebtn').onclick=async()=>{
   if(!confirm('Restore factory sections and setup?'))return;
   try{

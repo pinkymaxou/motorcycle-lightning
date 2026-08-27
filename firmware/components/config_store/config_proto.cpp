@@ -114,15 +114,20 @@ size_t encode(const SysConfig& cfg, uint8_t* const out, const size_t cap,
     m_msg.blink_exit_x10 = cfg.blink_exit_x10;
     m_msg.brake_holdoff_s = cfg.brake_holdoff_s;
 
+    m_msg.has_ap = true;
+    strlcpy(m_msg.ap.ssid, cfg.ap_ssid, sizeof(m_msg.ap.ssid));
+    m_msg.ap.pass_set = '\0' != cfg.ap_pass[0];
+
     m_msg.has_sta = true;
     strlcpy(m_msg.sta.ssid, cfg.sta_ssid, sizeof(m_msg.sta.ssid));
     m_msg.sta.active = cfg.sta_active;
     m_msg.sta.pass_set = '\0' != cfg.sta_pass[0];
     if (Secrets::Include == secrets)
     {
-        /* Storage only. Over the wire the password is write-only: the page
-         * learns that one is set, never what it is. */
+        /* Storage only. Over the wire both passwords are write-only: the
+         * page learns that one is set, never what it is. */
         strlcpy(m_msg.sta.pass, cfg.sta_pass, sizeof(m_msg.sta.pass));
+        strlcpy(m_msg.ap.pass, cfg.ap_pass, sizeof(m_msg.ap.pass));
     }
 
     pb_ostream_t stream = pb_ostream_from_buffer(out, cap);
@@ -165,6 +170,8 @@ bool decode(const uint8_t* const data, const size_t len, SysConfig* const cfg)
     strlcpy(cfg->sta_ssid, m_msg.sta.ssid, sizeof(cfg->sta_ssid));
     strlcpy(cfg->sta_pass, m_msg.sta.pass, sizeof(cfg->sta_pass));
     cfg->sta_active = m_msg.sta.active;
+    strlcpy(cfg->ap_ssid, m_msg.ap.ssid, sizeof(cfg->ap_ssid));
+    strlcpy(cfg->ap_pass, m_msg.ap.pass, sizeof(cfg->ap_pass));
     return true;
 }
 

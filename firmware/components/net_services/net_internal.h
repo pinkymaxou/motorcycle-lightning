@@ -7,7 +7,9 @@
 namespace NetServices
 {
 
-esp_err_t wifiStart(const char* sta_ssid, const char* sta_pass, bool sta_active);
+esp_err_t wifiStart(const char* ap_ssid, const char* ap_pass,
+                    const char* sta_ssid, const char* sta_pass,
+                    bool sta_active);
 esp_err_t wifiStop();
 bool wifiRunning();
 int wifiStaCount();

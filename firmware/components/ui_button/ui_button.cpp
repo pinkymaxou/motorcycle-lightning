@@ -12,10 +12,15 @@ namespace
 constexpr uint32_t POLL_PERIOD_US = 50 * 1000;
 constexpr uint8_t DEBOUNCE_POLLS = 3;       /* 3 x 50 ms */
 
+constexpr uint32_t HOLD_POLLS = HOLD_FACTORY_MS / (POLL_PERIOD_US / 1000);
+
 static int m_gpio;
 static Callback m_cb;
+static Callback m_hold_cb;
 static uint8_t m_stable;
 static bool m_pressed;
+static uint32_t m_held_polls;
+static bool m_hold_fired;
 
 void pollCb(void* arg)
 {
@@ -24,13 +29,28 @@ void pollCb(void* arg)
     if (raw == m_pressed)
     {
         m_stable = 0;
+        if (m_pressed && !m_hold_fired && ++m_held_polls >= HOLD_POLLS)
+        {
+            m_hold_fired = true;      /* once per press, still held */
+            if (nullptr != m_hold_cb)
+            {
+                m_hold_cb();
+            }
+        }
         return;
     }
     if (++m_stable >= DEBOUNCE_POLLS)
     {
         m_stable = 0;
         m_pressed = raw;
-        if (m_pressed && nullptr != m_cb)
+        if (m_pressed)
+        {
+            m_held_polls = 0;
+            m_hold_fired = false;
+        }
+        /* Act on release, so a hold that reached the factory reset does not
+         * also toggle the WiFi on its way there. */
+        else if (!m_hold_fired && nullptr != m_cb)
         {
             m_cb();
         }
@@ -39,10 +59,11 @@ void pollCb(void* arg)
 
 } // namespace
 
-esp_err_t init(const int gpio, const Callback on_press)
+esp_err_t init(const int gpio, const Callback on_press, const Callback on_hold)
 {
     m_gpio = gpio;
     m_cb = on_press;
+    m_hold_cb = on_hold;
 
     gpio_config_t io = {};
     io.pin_bit_mask = 1ULL << gpio;

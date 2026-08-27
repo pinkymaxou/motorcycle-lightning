@@ -17,6 +17,8 @@ motolights.Section.turn_on      max_size:16
 motolights.Section.turn_off     max_size:16
 motolights.Section.aux          max_size:16
 
+motolights.ApConfig.ssid        max_size:33
+motolights.ApConfig.pass        max_size:65
 motolights.StaConfig.ssid       max_size:33
 motolights.StaConfig.pass       max_size:65
 

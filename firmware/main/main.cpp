@@ -45,12 +45,38 @@ enum class NetRequest : uint8_t
 };
 
 static std::atomic<NetRequest> m_net_request{ NetRequest::None };
+static std::atomic<bool> m_factory_request;
+
+/* Fuchsia, held for FACTORY_ACK_MS: the button was held long enough and the
+ * module is about to forget everything. Bright on purpose — this is the one
+ * acknowledgement the rider must not miss. */
+constexpr uint8_t FACTORY_ACK_RGB[] = { 60, 0, 40 };
+constexpr uint32_t FACTORY_ACK_MS = 1000;
 
 /* Runs in the shared esp_timer task: starting/stopping WiFi is slow, so only
  * flag the request — the housekeeping loop does the heavy lifting. */
 void onButtonPress()
 {
     m_net_request.store(NetRequest::Toggle);
+}
+
+/* Fires while the button is still held. Erasing NVS blocks, so the timer
+ * context only raises the flag. */
+void onButtonHold()
+{
+    m_factory_request.store(true);
+}
+
+/* Everything the module remembers: configuration, learned flasher period,
+ * crash log. The way back in when the access point's password is lost. */
+void factoryReset()
+{
+    ESP_LOGW(TAG, "button held %us — erasing NVS and rebooting",
+             static_cast<unsigned>(UiButton::HOLD_FACTORY_MS / 1000));
+    StatusLed::solid(FACTORY_ACK_RGB[0], FACTORY_ACK_RGB[1], FACTORY_ACK_RGB[2]);
+    vTaskDelay(pdMS_TO_TICKS(FACTORY_ACK_MS));
+    nvs_flash_erase();
+    esp_restart();
 }
 
 void applyNetRequest(const NetRequest req, const char* source)
@@ -215,7 +241,7 @@ extern "C" void app_main()
                   "'wifi on' to enable it");
 
     /* 8. button hook + serial console ("wifi on" brings the page up) */
-    UiButton::init(PIN_BUTTON, onButtonPress);
+    UiButton::init(PIN_BUTTON, onButtonPress, onButtonHold);
     DevConsole::start(onConsoleLine);
 
     if (cfg_fallback)
@@ -275,6 +301,10 @@ extern "C" void app_main()
     for (;;)
     {
         vTaskDelay(pdMS_TO_TICKS(HOUSEKEEPING_PERIOD_MS));
+        if (m_factory_request.exchange(false))
+        {
+            factoryReset();
+        }
         const NetRequest req = m_net_request.exchange(NetRequest::None);
         if (NetRequest::None != req)
         {

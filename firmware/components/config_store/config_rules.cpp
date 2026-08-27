@@ -118,6 +118,10 @@ void defaults(SysConfig* cfg)
     cfg->blink_exit_x10 = 12;   /* period + 20% grace for the next flash */
     cfg->brake_holdoff_s = 25;
 
+    /* empty: the module keeps its compiled-in access point */
+    cfg->ap_ssid[0] = '\0';
+    cfg->ap_pass[0] = '\0';
+
     cfg->sta_ssid[0] = '\0';
     cfg->sta_pass[0] = '\0';
     cfg->sta_active = false;
@@ -131,7 +135,16 @@ bool validate(const SysConfig* cfg)
         return false;
     }
     if (!stringOk(cfg->sta_ssid, sizeof(cfg->sta_ssid)) ||
-        !stringOk(cfg->sta_pass, sizeof(cfg->sta_pass)))
+        !stringOk(cfg->sta_pass, sizeof(cfg->sta_pass)) ||
+        !stringOk(cfg->ap_ssid, sizeof(cfg->ap_ssid)) ||
+        !stringOk(cfg->ap_pass, sizeof(cfg->ap_pass)))
+    {
+        return false;
+    }
+    /* A named access point needs a WPA2-legal key: too short and the AP
+     * never starts, which is how a module locks its own page away. */
+    if ('\0' != cfg->ap_ssid[0] &&
+        std::strlen(cfg->ap_pass) < CFG_AP_PASS_MIN)
     {
         return false;
     }

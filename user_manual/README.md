@@ -43,6 +43,7 @@ The status LED on the module tells you where you are:
 | green blink, 2 Hz | running normally, config WiFi **off** |
 | green / blue alternating, 2 Hz | running, config WiFi **on** |
 | purple blink | running on factory defaults — the stored config was rejected |
+| solid fuchsia | the button was held 15 s: everything is being erased |
 | orange blink | network error |
 
 **The config WiFi is off at boot, on purpose.** Riding needs no radio, and a
@@ -168,17 +169,39 @@ effects refer to. Editing one changes every effect that uses it. The
 brightness slider dims the colour itself, and it is the **only** brightness
 control: there is no separate per-strip level to fight with.
 
-### Save / Restore defaults
+### Save / Export / Import / Restore defaults
 
 **Save** writes everything to the module's flash and applies it immediately.
+
+**Export** downloads the whole configuration as a JSON file — a backup before
+you experiment, or a way to put the same setup on a second module. Passwords
+are never in the file. **Import** loads one back into the page; nothing
+reaches the module until you press **Save**, so you can look it over first.
+
 **Restore defaults** puts back the factory layout (a 40-LED bar: 12 left turn,
 16 brake, 12 right turn) and clears your settings, including the WiFi ones.
 
 ---
 
-## 6. WiFi — joining your home network
+## 6. WiFi — the module's network and yours
 
 ![WiFi tab](img/05-wifi.png)
+
+### The module's access point
+
+This is the network you join to reach this page. Leave the SSID blank and it
+stays the factory one — **MotoLights**, password **motolights**. Name it
+yourself and it needs a password of at least eight characters; the module
+refuses anything shorter, because an access point that fails to start is an
+access point you cannot reach. The change takes effect the next time the
+config WiFi comes up.
+
+**Locked yourself out?** Hold the module button for 15 seconds. The status LED
+turns fuchsia for a second, and the module erases everything it remembers —
+configuration, access point, learned flasher period — and comes back on
+factory settings.
+
+### Your home network
 
 Optional, and only there to make the page easier to reach from a laptop:
 enter your network's SSID and password and the module joins it whenever the
@@ -261,6 +284,7 @@ the module — and it comes back dark rather than frozen on half a frame.
 | Strip completely dark, module otherwise alive | no section defined for that strip, or a wiring problem — check the Setup total (`0 / 300 LEDs`) |
 | Purple blinking status LED | the stored configuration was rejected and factory defaults are running — open Setup, check it, and Save |
 | Page unreachable | config WiFi is off — press the module button; the LED must alternate green/blue |
+| Access point name or password forgotten | hold the button 15 s: fuchsia LED, then factory settings and the **MotoLights** network is back |
 | Colours wrong (red shows green) | wrong **colour order** for your strip |
 | Animation runs the wrong way | flip the section's **Direction**, or the strip's **reversed data direction** if the whole bar is mirrored |
 | Blinking out of step with the bike | let it blink a few times so the period gets learned; the System tab shows the learned value |

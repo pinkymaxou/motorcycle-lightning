@@ -93,6 +93,13 @@ message Strip {
   repeated Section sections = 9;
 }
 
+// The module's own access point. Empty ssid = the compiled-in one.
+message ApConfig {
+  string ssid     = 1;
+  string pass     = 2;   // PUT only; empty = keep current
+  bool   pass_set = 3;   // GET only
+}
+
 message Config {
   // Always one entry per strip, in index order (an empty entry still counts).
   repeated Strip strips   = 1;
@@ -107,6 +114,7 @@ message Config {
   string hazard_on        = 6;
   string hazard_off       = 7;
   StaConfig sta           = 5;
+  ApConfig  ap            = 8;
 }
 
 message EffectInfo {

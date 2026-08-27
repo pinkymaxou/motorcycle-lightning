@@ -168,6 +168,18 @@ esp_err_t hConfigPut(httpd_req_t* req)
     {
         tmp.sta_pass[0] = '\0';
     }
+    if ('\0' == tmp.ap_pass[0])
+    {
+        std::strcpy(tmp.ap_pass, m_cfg->ap_pass);
+    }
+    /* Said before the generic check so the answer names the actual problem:
+     * this is the one setting that can lock the page away. */
+    if ('\0' != tmp.ap_ssid[0] &&
+        std::strlen(tmp.ap_pass) < CFG_AP_PASS_MIN)
+    {
+        return sendError(req, "400 Bad Request",
+                         "the access point password needs at least 8 characters");
+    }
     if (!ConfigStore::validate(&tmp))
     {
         return sendError(req, "400 Bad Request",
