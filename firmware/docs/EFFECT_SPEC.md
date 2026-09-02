@@ -4,7 +4,7 @@ This document is the single source of truth for effect semantics, implemented
 once in `components/fx/effect_eval.cpp`. Effects are defined as native
 constexpr step tables in `components/fx/factory_effects.cpp` — there is no
 JSON anywhere; the web UI receives only the module's rendered frames (see
-`components/net_services/proto/ws_protocol.proto`). If a client-side preview is ever reintroduced, it
+`components/protocol/proto/ws_protocol.proto`). If a client-side preview is ever reintroduced, it
 must implement this spec exactly.
 
 ## Model

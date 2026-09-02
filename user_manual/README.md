@@ -74,7 +74,8 @@ dot when you have unsaved changes, and leaving asks first.
 ![Simulate tab](img/01-simulate.png)
 
 The strip drawing is not a mock-up: it is the module's real frames, pushed
-about 75 times a second. What you see here is exactly what the LEDs show.
+to the page about 30 times a second (the LEDs themselves refresh at ~75).
+What you see here is exactly what the LEDs show.
 
 - **LEFT / HAZARD / RIGHT / BRAKE / AUX** inject a simulated signal into the
   module's normal pipeline — the lighting logic is the same one used on the
@@ -113,8 +114,8 @@ For each section:
   animation driven by that side's signal
 - **Brake + position** — no blinker, lights up on the brake
 - **Position only** — always on, ignores brake and turn
-- **Custom…** — opens the five selectors: *Turn source*, *Idle / position*,
-  *Brake*, *Turn ON*, *Turn off phase*, *Aux*
+- **Custom…** — opens the selectors: *Turn source*, then one effect each
+  for *Idle / position*, *Brake*, *Turn ON*, *Turn off phase* and *Aux*
 
 Any event can be set to **— none —**, which means "paint nothing here" — the
 layers below stay visible. That is not the same as the *Off (dark)* effect,
@@ -287,7 +288,7 @@ the module — and it comes back dark rather than frozen on half a frame.
 | Access point name or password forgotten | hold the button 15 s: fuchsia LED, then factory settings and the **MotoLights** network is back |
 | Colours wrong (red shows green) | wrong **colour order** for your strip |
 | Animation runs the wrong way | flip the section's **Direction**, or the strip's **reversed data direction** if the whole bar is mirrored |
-| Blinking out of step with the bike | let it blink a few times so the period gets learned; the System tab shows the learned value |
+| Blinking out of step with the bike | let it blink a few times so the period gets learned; the Simulate tab shows the learned value next to the real inputs |
 | `Unexpected resets` is not zero | the module crashed or was rebooted by its watchdog — note the reason and report it |
 | Firmware update refused | the file is not a MotoLights image, or it is not an ESP32 application at all — the message says which |
 | The module came back on the old firmware after an update | the new image failed its first boot and the module rolled itself back |
@@ -308,7 +309,3 @@ A serial console is available at 115200 baud with a few commands: `wifi`,
 | LED families | WS2812/WS2812B, SK6812, WS2811, WS2816 |
 | Inputs | LEFT, RIGHT, BRAKE, AUX — 12 V, opto-isolated, active low |
 
----
-
-*Screenshots are taken from a running module with
-`firmware/tools/capture_screenshots.sh <module-ip>`.*

@@ -9,8 +9,7 @@ CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
 
 CONFIG_COMPILER_OPTIMIZATION_PERF=y
 
-# HTTP server: wildcard URIs for /api/effects/{id}, roomy headers for browsers,
-# WebSocket push for the live strip view
+# HTTP server: roomy headers for browsers, WebSocket push for the live view
 CONFIG_HTTPD_MAX_REQ_HDR_LEN=2048
 CONFIG_HTTPD_MAX_URI_LEN=128
 CONFIG_HTTPD_WS_SUPPORT=y

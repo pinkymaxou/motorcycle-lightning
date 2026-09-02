@@ -1,6 +1,6 @@
 # Coding Style Guide
 
-This document outlines the coding style for the `oe-heatgrip-gdo` projects.
+This document outlines the coding style for this firmware.
 
 ## Variable Naming
 
@@ -15,7 +15,7 @@ This document outlines the coding style for the `oe-heatgrip-gdo` projects.
 - **Constants and Macros**: Use `UPPER_CASE`.
 - **Classes/Structs**: Use `PascalCase` (e.g., `struct MessagePacket;`).
 - **Enums**: Use `enum class` (scoped enums) with `PascalCase` members (e.g., `enum class DeviceState { ... };`).
-- **Acronyms**: Keep acronyms in uppercase (e.g., `OTA`, `GDO`, `PMK`, `SSID`, `WAP`, `PWM`).
+- **Acronyms**: Keep acronyms in uppercase (e.g., `OTA`, `RMT`, `NVS`, `SSID`, `PWM`).
 - **Pointers and references**: The `*` or `&` binds to the **type**, not the
   name: `const char* name`, `SysConfig* cfg`, `const StripConfig& sc`.
 - **Brackets**: The starting brace `{` **MUST** be on a new line (Allman style).
@@ -31,7 +31,7 @@ This document outlines the coding style for the `oe-heatgrip-gdo` projects.
 ## Const Correctness
 
 - **Always mark a variable `const` if it never changes after initialization.** This applies to local variables, parameters passed by reference/pointer, and member functions that don't mutate state.
-  - **Correct**: `const int count = readCount();`, `const KartConfig cfg = configSnapshot();`, `void print() const;`.
+  - **Correct**: `const int count = readCount();`, `const SysConfig cfg = configSnapshot();`, `void print() const;`.
   - **Incorrect**: `int count = readCount();` when `count` is never reassigned.
 - Prefer `constexpr` over `const` for values known at compile time.
 

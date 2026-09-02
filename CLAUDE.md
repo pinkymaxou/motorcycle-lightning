@@ -33,7 +33,7 @@ exists only behind the config WiFi, which is off at boot.
 firmware/test/host/run_tests.sh          # pure-logic tests, no ESP-IDF needed
 firmware/tools/check_webui.py webui      # dangling ids / undefined symbols
 firmware/tools/test_webui.sh             # the page's codecs, in a headless browser
-firmware/tools/build_webui.sh            # inline + gzip the page asset
+firmware/tools/build_webui.sh            # inline + gzip the page asset (--check: is it stale?)
 idf.py build && idf.py -p /dev/ttyACM0 flash
 ```
 

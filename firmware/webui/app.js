@@ -2,7 +2,7 @@
 if(!CanvasRenderingContext2D.prototype.roundRect)
   CanvasRenderingContext2D.prototype.roundRect=function(x,y,w,h){this.rect(x,y,w,h);return this;};
 
-/* ============ protobuf wire format (docs/ws_protocol.proto) ============ */
+/* ====== protobuf wire format (components/protocol/proto/ws_protocol.proto) ====== */
 const TENC=new TextEncoder(),TDEC=new TextDecoder();
 function pbW(){
   const b=[];
