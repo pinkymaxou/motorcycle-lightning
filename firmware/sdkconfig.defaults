@@ -1,6 +1,6 @@
 CONFIG_IDF_TARGET="esp32"
 
-# 1 kHz tick so vTaskDelayUntil(16ms) is precise for the 60 FPS render loop
+# 1 kHz tick so vTaskDelayUntil(13ms) is precise for the ~75 FPS render loop
 CONFIG_FREERTOS_HZ=1000
 
 CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y

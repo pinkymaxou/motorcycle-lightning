@@ -20,10 +20,12 @@ esp_err_t init(const int* gpios, int count, uint16_t max_leds);
 
 void setReversed(StripId strip, bool reversed);
 
-/* Select one strip's family and wire order. Recreates that strip's RMT
- * device when the type actually changes, so it MUST be called from the
+/* Select one strip's family, wire order and length. Recreates that strip's
+ * RMT device — sized to led_count — when any of them changes, blanking the
+ * LEDs first; led_count 0 releases the device. MUST be called from the
  * render task (all RMT channels belong to core 1). */
-esp_err_t setLedType(StripId strip, LedModel model, ColorOrder order);
+esp_err_t setLayout(StripId strip, LedModel model, ColorOrder order,
+                    uint16_t led_count);
 
 /* Push a logical RGB frame (rgb[count*3]) to one strip. Applies direction,
  * gamma. Blocks until the previous refresh is done. */
