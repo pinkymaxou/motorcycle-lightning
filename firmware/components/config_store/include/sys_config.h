@@ -4,11 +4,17 @@
 #include <cstdint>
 #include "effect_model.h"
 
-constexpr uint32_t CFG_VERSION = 8;
 constexpr uint16_t CFG_MAX_LEDS = 300;
 constexpr int CFG_MAX_SECTIONS = 8;   /* mirrored by ws_protocol.options */
-constexpr int CFG_STA_SSID_LEN = 33;
-constexpr int CFG_STA_PASS_LEN = 65;
+constexpr int CFG_SSID_LEN = 33;
+constexpr int CFG_PASS_LEN = 65;
+/* WPA2 refuses anything shorter; the AP would simply fail to start, which
+ * would lock the config page away. */
+constexpr int CFG_AP_PASS_MIN = 8;
+/* The WiFi driver's password field is 64 bytes including its terminator: a
+ * 64-character key would be silently cut to 63, and an access point would
+ * then start with a password nobody typed. */
+constexpr int CFG_PASS_MAX = 63;
 
 /* The PCB's two independent WS2812B outputs (see main/board_pins.h). */
 enum class StripId : uint8_t
@@ -123,19 +129,29 @@ constexpr int CFG_DEFAULT_SECTION_COUNT =
 
 struct SysConfig
 {
-    uint32_t version;
-
     StripConfig strips[STRIP_COUNT];
 
     /* fixed semantic color set (Fx::FxColor) — values editable only */
     Fx::FxPalette palette;
+
+    /* Hazard is a whole-vehicle state, so its look is shared rather than
+     * per section: with both signals blinking, these replace the sections'
+     * turn effects. Empty = keep whatever the section already plays. A sweep
+     * says "I am going that way", which is not what hazard means. */
+    char fx_hazard_on[Fx::ID_LEN];
+    char fx_hazard_off[Fx::ID_LEN];
 
     /* input domain: shared, the bike has one flasher and one brake line */
     uint8_t  blink_exit_x10;    /* blink-mode exit factor x10 (12 = 1.2x) */
     uint16_t brake_holdoff_s;   /* brake intro replays after this release */
 
     /* home-network STA (SoftAP always on) */
-    char sta_ssid[CFG_STA_SSID_LEN];
-    char sta_pass[CFG_STA_PASS_LEN];
+    char sta_ssid[CFG_SSID_LEN];
+    char sta_pass[CFG_PASS_LEN];
     bool sta_active;
+
+    /* The module's own access point. An empty SSID means the compiled-in
+     * pair, so a module that was never configured still has a way in. */
+    char ap_ssid[CFG_SSID_LEN];
+    char ap_pass[CFG_PASS_LEN];
 };

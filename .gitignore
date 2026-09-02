@@ -1,8 +1,7 @@
 build/
 sdkconfig
 sdkconfig.old
-firmware/main/wifi_creds.h
+wifi_creds.h
 managed_components/
-dependencies.lock
 test/host/build/
 __pycache__/

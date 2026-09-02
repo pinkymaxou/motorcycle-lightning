@@ -43,6 +43,7 @@ The status LED on the module tells you where you are:
 | green blink, 2 Hz | running normally, config WiFi **off** |
 | green / blue alternating, 2 Hz | running, config WiFi **on** |
 | purple blink | running on factory defaults — the stored config was rejected |
+| solid fuchsia | the button was held 15 s: everything is being erased |
 | orange blink | network error |
 
 **The config WiFi is off at boot, on purpose.** Riding needs no radio, and a
@@ -73,7 +74,8 @@ dot when you have unsaved changes, and leaving asks first.
 ![Simulate tab](img/01-simulate.png)
 
 The strip drawing is not a mock-up: it is the module's real frames, pushed
-about 75 times a second. What you see here is exactly what the LEDs show.
+to the page about 30 times a second (the LEDs themselves refresh at ~75).
+What you see here is exactly what the LEDs show.
 
 - **LEFT / HAZARD / RIGHT / BRAKE / AUX** inject a simulated signal into the
   module's normal pipeline — the lighting logic is the same one used on the
@@ -112,8 +114,8 @@ For each section:
   animation driven by that side's signal
 - **Brake + position** — no blinker, lights up on the brake
 - **Position only** — always on, ignores brake and turn
-- **Custom…** — opens the five selectors: *Turn source*, *Idle / position*,
-  *Brake*, *Turn ON*, *Turn off phase*, *Aux*
+- **Custom…** — opens the selectors: *Turn source*, then one effect each
+  for *Idle / position*, *Brake*, *Turn ON*, *Turn off phase* and *Aux*
 
 Any event can be set to **— none —**, which means "paint nothing here" — the
 layers below stay visible. That is not the same as the *Off (dark)* effect,
@@ -155,6 +157,11 @@ These come from the bike itself, so they apply to every strip:
 - **Brake strobe holdoff** — the brake's flash intro only replays if the
   brake was released for at least this long, so stop-and-go traffic does not
   turn into a strobe show. `0` replays every time.
+- **Hazard ON** / **Hazard off phase** — what every section plays while
+  *both* signals blink. Leave them on *same as turn signal* and hazard looks
+  like two turn signals at once; set the flash to **Turn ON (solid)** and the
+  sweep stays for real turns only. A sweep says "I am going that way", which
+  is not what hazard means.
 
 ### Colours
 
@@ -163,17 +170,39 @@ effects refer to. Editing one changes every effect that uses it. The
 brightness slider dims the colour itself, and it is the **only** brightness
 control: there is no separate per-strip level to fight with.
 
-### Save / Restore defaults
+### Save / Export / Import / Restore defaults
 
 **Save** writes everything to the module's flash and applies it immediately.
+
+**Export** downloads the whole configuration as a JSON file — a backup before
+you experiment, or a way to put the same setup on a second module. Passwords
+are never in the file. **Import** loads one back into the page; nothing
+reaches the module until you press **Save**, so you can look it over first.
+
 **Restore defaults** puts back the factory layout (a 40-LED bar: 12 left turn,
 16 brake, 12 right turn) and clears your settings, including the WiFi ones.
 
 ---
 
-## 6. WiFi — joining your home network
+## 6. WiFi — the module's network and yours
 
 ![WiFi tab](img/05-wifi.png)
+
+### The module's access point
+
+This is the network you join to reach this page. Leave the SSID blank and it
+stays the factory one — **MotoLights**, password **motolights**. Name it
+yourself and it needs a password of at least eight characters; the module
+refuses anything shorter, because an access point that fails to start is an
+access point you cannot reach. The change takes effect the next time the
+config WiFi comes up.
+
+**Locked yourself out?** Hold the module button for 15 seconds. The status LED
+turns fuchsia for a second, and the module erases everything it remembers —
+configuration, access point, learned flasher period — and comes back on
+factory settings.
+
+### Your home network
 
 Optional, and only there to make the page easier to reach from a laptop:
 enter your network's SSID and password and the module joins it whenever the
@@ -234,7 +263,8 @@ leaving blink mode — it never cuts a flash short.
 
 **Hazards.** With both signals blinking, both sides lock to the one that
 started first, so the two ends of the bar — and both strips — stay in step
-instead of drifting apart.
+instead of drifting apart. If you gave hazard its own effect in Setup, it
+replaces what every section would otherwise play, on both sides at once.
 
 **Braking.** While the brake input is on, every section that has a brake
 effect gets a red floor, so it can never be darker than a visible red. A
@@ -255,9 +285,10 @@ the module — and it comes back dark rather than frozen on half a frame.
 | Strip completely dark, module otherwise alive | no section defined for that strip, or a wiring problem — check the Setup total (`0 / 300 LEDs`) |
 | Purple blinking status LED | the stored configuration was rejected and factory defaults are running — open Setup, check it, and Save |
 | Page unreachable | config WiFi is off — press the module button; the LED must alternate green/blue |
+| Access point name or password forgotten | hold the button 15 s: fuchsia LED, then factory settings and the **MotoLights** network is back |
 | Colours wrong (red shows green) | wrong **colour order** for your strip |
 | Animation runs the wrong way | flip the section's **Direction**, or the strip's **reversed data direction** if the whole bar is mirrored |
-| Blinking out of step with the bike | let it blink a few times so the period gets learned; the System tab shows the learned value |
+| Blinking out of step with the bike | let it blink a few times so the period gets learned; the Simulate tab shows the learned value next to the real inputs |
 | `Unexpected resets` is not zero | the module crashed or was rebooted by its watchdog — note the reason and report it |
 | Firmware update refused | the file is not a MotoLights image, or it is not an ESP32 application at all — the message says which |
 | The module came back on the old firmware after an update | the new image failed its first boot and the module rolled itself back |
@@ -278,7 +309,3 @@ A serial console is available at 115200 baud with a few commands: `wifi`,
 | LED families | WS2812/WS2812B, SK6812, WS2811, WS2816 |
 | Inputs | LEFT, RIGHT, BRAKE, AUX — 12 V, opto-isolated, active low |
 
----
-
-*Screenshots are taken from a running module with
-`firmware/tools/capture_screenshots.sh <module-ip>`.*

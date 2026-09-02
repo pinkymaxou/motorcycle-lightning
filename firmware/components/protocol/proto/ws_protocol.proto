@@ -7,8 +7,10 @@
 //   GET  /api/effects  -> EffectsList     GET  /api/sysinfo  -> SysInfo
 //   POST /api/command  <- Command
 //
-// The firmware encodes with pb_write.cpp and decodes with pb_read.cpp; the
-// page has matching helpers in webui/index.html. Standard proto3 wire format:
+// The firmware uses the nanopb bindings generated from this file (see the
+// component's CMakeLists.txt); the page has hand-written helpers in
+// webui/app.js, and config_store writes the same encoding to flash. Standard
+// proto3 wire format:
 // any protobuf tooling can decode the traffic for debugging. Keep this file
 // and both implementations in sync.
 
@@ -93,6 +95,13 @@ message Strip {
   repeated Section sections = 9;
 }
 
+// The module's own access point. Empty ssid = the compiled-in one.
+message ApConfig {
+  string ssid     = 1;
+  string pass     = 2;   // PUT only; empty = keep current
+  bool   pass_set = 3;   // GET only
+}
+
 message Config {
   // Always one entry per strip, in index order (an empty entry still counts).
   repeated Strip strips   = 1;
@@ -102,7 +111,12 @@ message Config {
   // Input domain, shared: the bike has one flasher and one brake line.
   uint32 blink_exit_x10   = 3;
   uint32 brake_holdoff_s  = 4;
+  // Hazard overrides, shared by both strips. "" = sections keep their own
+  // turn effects for that phase.
+  string hazard_on        = 6;
+  string hazard_off       = 7;
   StaConfig sta           = 5;
+  ApConfig  ap            = 8;
 }
 
 message EffectInfo {

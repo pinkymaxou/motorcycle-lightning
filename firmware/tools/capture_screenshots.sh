@@ -24,16 +24,20 @@ shot() {   # shot <tab> <file> <height>
 echo "capturing from $IP"
 shot sim    01-simulate.png 830
 shot setup  02-setup.png    1560
-shot wifi   05-wifi.png     420
+shot wifi   05-wifi.png     700
 shot pinout 03-pinout.png   570
 shot system 04-system.png   1000
 
-# The WiFi tab shows the home network's name. Blur that one field — the box
-# is in screenshot pixels (device pixels, i.e. CSS x2), so re-check it if the
-# card's layout moves.
-SSID_BOX="350:62:340:340"   # w:h:x:y
+# The WiFi tab carries two network names — the module's access point and the
+# home one. Blur both fields. The boxes are in screenshot pixels (device
+# pixels, i.e. CSS x2), so re-check them if that tab's layout moves.
+AP_SSID_BOX="350:62:340:340"     # w:h:x:y
+STA_SSID_BOX="350:62:340:725"
 ffmpeg -loglevel error -y -i "$OUT/05-wifi.png" -filter_complex \
-    "[0:v]crop=$SSID_BOX,boxblur=12[b];[0:v][b]overlay=340:340" \
+    "[0:v]crop=$AP_SSID_BOX,boxblur=12[a];\
+     [0:v][a]overlay=340:340[m];\
+     [m]crop=$STA_SSID_BOX,boxblur=12[b];\
+     [m][b]overlay=340:725" \
     "$OUT/05-wifi-blur.png"
 mv "$OUT/05-wifi-blur.png" "$OUT/05-wifi.png"
-echo "  $OUT/05-wifi.png (SSID blurred)"
+echo "  $OUT/05-wifi.png (both SSIDs blurred)"

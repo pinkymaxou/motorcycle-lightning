@@ -57,7 +57,8 @@ constexpr size_t ARRAY_LEN(T (&)[N])
 
 constexpr size_t CONFIG_BUF_BYTES = motolights_Config_size;
 constexpr size_t EFFECTS_BUF_BYTES = 768;
-constexpr size_t SYSINFO_BUF_BYTES = 1024;
+constexpr int HTTPD_SEND_TIMEOUT_S = 1;
+constexpr size_t SYSINFO_BUF_BYTES = motolights_SysInfo_size;
 
 static httpd_handle_t m_server;
 static SysConfig* m_cfg;      /* application's live config */
@@ -104,6 +105,21 @@ esp_err_t sendOk(httpd_req_t* req)
 }
 
 /* Read the full request body into buf. Returns received length or 0. */
+} // namespace
+
+bool bodyTypeIs(httpd_req_t* const req, const char* const type)
+{
+    char got[48];
+    if (ESP_OK != httpd_req_get_hdr_value_str(req, "Content-Type", got, sizeof(got)))
+    {
+        return false;
+    }
+    return 0 == std::strcmp(got, type);
+}
+
+namespace
+{
+
 size_t readBody(httpd_req_t* req, uint8_t* buf, const size_t cap)
 {
     if (0 == req->content_len || req->content_len > cap)
@@ -124,153 +140,20 @@ size_t readBody(httpd_req_t* req, uint8_t* buf, const size_t cap)
     return got;
 }
 
-uint32_t packColor(const Fx::RgbaColor c)
-{
-    return (static_cast<uint32_t>(c.r) << 24) | (static_cast<uint32_t>(c.g) << 16) |
-           (static_cast<uint32_t>(c.b) << 8) | c.a;
-}
-
-Fx::RgbaColor unpackColor(const uint32_t v)
-{
-    return Fx::RgbaColor{ static_cast<uint8_t>(v >> 24),
-                          static_cast<uint8_t>(v >> 16),
-                          static_cast<uint8_t>(v >> 8),
-                          static_cast<uint8_t>(v) };
-}
-
-bool effectIdKnown(const char* id)
+/* An empty id means "this event paints nothing", which is always legal. */
+bool effectIdKnown(const char* const id)
 {
     return '\0' == id[0] || Fx::factoryExists(id);
 }
 
-/* ---------- Config <-> protobuf (nanopb) ---------- */
-
-void sectionToProto(const SectionConfig& sec, motolights_Section* out)
-{
-    out->led_count = sec.led_count;
-    out->reversed = sec.reversed;
-    out->turn = static_cast<uint32_t>(sec.turn);
-    strlcpy(out->idle, sec.fx_idle, sizeof(out->idle));
-    strlcpy(out->brake, sec.fx_brake, sizeof(out->brake));
-    strlcpy(out->turn_on, sec.fx_turn_on, sizeof(out->turn_on));
-    strlcpy(out->turn_off, sec.fx_turn_off, sizeof(out->turn_off));
-    strlcpy(out->aux, sec.fx_aux, sizeof(out->aux));
-}
-
-void sectionFromProto(const motolights_Section& in, SectionConfig* sec)
-{
-    sec->led_count = static_cast<uint16_t>(in.led_count);
-    sec->reversed = in.reversed;
-    sec->turn = static_cast<TurnSource>(in.turn);
-    strlcpy(sec->fx_idle, in.idle, sizeof(sec->fx_idle));
-    strlcpy(sec->fx_brake, in.brake, sizeof(sec->fx_brake));
-    strlcpy(sec->fx_turn_on, in.turn_on, sizeof(sec->fx_turn_on));
-    strlcpy(sec->fx_turn_off, in.turn_off, sizeof(sec->fx_turn_off));
-    strlcpy(sec->fx_aux, in.aux, sizeof(sec->fx_aux));
-}
-
-void stripToProto(const StripConfig& sc, motolights_Strip* out)
-{
-    out->led_model = static_cast<uint32_t>(sc.led_model);
-    out->color_order = static_cast<uint32_t>(sc.color_order);
-    out->reversed = sc.reversed;
-
-    out->sections_count = (sc.n_sections < CFG_MAX_SECTIONS) ? sc.n_sections
-                                                             : CFG_MAX_SECTIONS;
-    for (pb_size_t i = 0; i < out->sections_count; i++)
-    {
-        sectionToProto(sc.sections[i], &out->sections[i]);
-    }
-}
-
-void stripFromProto(const motolights_Strip& in, StripConfig* sc)
-{
-    *sc = StripConfig{};        /* a PUT carries the whole strip */
-    sc->led_model = static_cast<LedModel>(in.led_model);
-    sc->color_order = static_cast<ColorOrder>(in.color_order);
-    sc->reversed = in.reversed;
-
-    const pb_size_t count = (in.sections_count < CFG_MAX_SECTIONS)
-                                ? in.sections_count
-                                : CFG_MAX_SECTIONS;
-    sc->n_sections = static_cast<uint8_t>(count);
-    for (pb_size_t i = 0; i < count; i++)
-    {
-        sectionFromProto(in.sections[i], &sc->sections[i]);
-    }
-}
-
-size_t encodeConfig(const SysConfig& cfg, uint8_t* out, const size_t cap)
-{
-    static motolights_Config msg;
-    msg = motolights_Config_init_zero;
-
-    msg.strips_count = STRIP_COUNT;
-    for (int i = 0; i < STRIP_COUNT; i++)
-    {
-        stripToProto(cfg.strips[i], &msg.strips[i]);
-    }
-
-    msg.colors_count = Fx::COLOR_COUNT;
-    for (int i = 0; i < Fx::COLOR_COUNT; i++)
-    {
-        msg.colors[i] = packColor(cfg.palette.colors[i]);
-    }
-
-    msg.blink_exit_x10 = cfg.blink_exit_x10;
-    msg.brake_holdoff_s = cfg.brake_holdoff_s;
-
-    msg.has_sta = true;
-    strlcpy(msg.sta.ssid, cfg.sta_ssid, sizeof(msg.sta.ssid));
-    /* password is write-only: never echoed back, only its presence */
-    msg.sta.active = cfg.sta_active;
-    msg.sta.pass_set = '\0' != cfg.sta_pass[0];
-
-    pb_ostream_t stream = pb_ostream_from_buffer(out, cap);
-    if (!pb_encode(&stream, motolights_Config_fields, &msg))
-    {
-        ESP_LOGE(TAG, "config encode failed: %s", PB_GET_ERROR(&stream));
-        return 0;
-    }
-    return stream.bytes_written;
-}
-
-/* The message is authoritative: a PUT replaces the configuration. Absent
- * fields therefore mean "unset" (proto3 omits empty strings, which is how
- * the page clears an effect assignment), not "keep the old value". */
-bool decodeConfig(const uint8_t* data, const size_t len, SysConfig* cfg)
-{
-    static motolights_Config msg;
-    msg = motolights_Config_init_zero;
-    pb_istream_t stream = pb_istream_from_buffer(data, len);
-    if (!pb_decode(&stream, motolights_Config_fields, &msg))
-    {
-        ESP_LOGW(TAG, "config decode failed: %s", PB_GET_ERROR(&stream));
-        return false;
-    }
-
-    *cfg = SysConfig{};
-    cfg->version = CFG_VERSION;
-
-    for (pb_size_t i = 0; i < msg.strips_count && i < STRIP_COUNT; i++)
-    {
-        stripFromProto(msg.strips[i], &cfg->strips[i]);
-    }
-    for (pb_size_t i = 0; i < msg.colors_count && i < Fx::COLOR_COUNT; i++)
-    {
-        cfg->palette.colors[i] = unpackColor(msg.colors[i]);
-    }
-    cfg->blink_exit_x10 = static_cast<uint8_t>(msg.blink_exit_x10);
-    cfg->brake_holdoff_s = static_cast<uint16_t>(msg.brake_holdoff_s);
-    strlcpy(cfg->sta_ssid, msg.sta.ssid, sizeof(cfg->sta_ssid));
-    strlcpy(cfg->sta_pass, msg.sta.pass, sizeof(cfg->sta_pass));
-    cfg->sta_active = msg.sta.active;
-    return true;
-}
+/* Config <-> protobuf lives in config_store: the same encoding goes on the
+ * wire and into flash, so the two can never drift apart. */
 
 esp_err_t hConfigGet(httpd_req_t* req)
 {
-    const size_t len = encodeConfig(*m_cfg, m_config_buf, sizeof(m_config_buf));
+    const size_t len = ConfigStore::encode(*m_cfg, m_config_buf,
+                                          sizeof(m_config_buf),
+                                          ConfigStore::Secrets::Omit);
     if (0 == len)
     {
         return httpd_resp_send_500(req);
@@ -278,8 +161,49 @@ esp_err_t hConfigGet(httpd_req_t* req)
     return sendPb(req, m_config_buf, len);
 }
 
+/* Everything a new *m_cfg needs to become real: the render set, the input
+ * conditioner's parameters, the STA link, and the flash. One path for a PUT
+ * and for restore-defaults, so neither can forget a step — and an honest
+ * answer: a config that did not take, or did not persist, is not a 200. */
+esp_err_t applyAndPersist(httpd_req_t* const req, const bool sta_changed)
+{
+    const esp_err_t applied = RenderCore::applyConfig(*m_cfg);
+    if (ESP_OK != applied)
+    {
+        ESP_LOGE(TAG, "applyConfig: %s — strip keeps the previous set",
+                 esp_err_to_name(applied));
+        return sendError(req, "500 Internal Server Error",
+                         "could not apply the configuration (out of memory?)");
+    }
+    InputConditioner::setBrakeHoldoff(
+        static_cast<uint32_t>(m_cfg->brake_holdoff_s) * 1000);
+    InputConditioner::setExitFactor(m_cfg->blink_exit_x10);
+    if (sta_changed && nullptr != m_sta_apply_timer)
+    {
+        esp_timer_stop(m_sta_apply_timer);
+        esp_timer_start_once(m_sta_apply_timer, STA_APPLY_DELAY_US);
+    }
+
+    const esp_err_t saved = ConfigStore::save(m_cfg);
+    if (ESP_OK != saved)
+    {
+        ESP_LOGE(TAG, "config NVS save: %s (applied live only)",
+                 esp_err_to_name(saved));
+        return sendError(req, "500 Internal Server Error",
+                         "applied, but could not be saved to flash");
+    }
+    /* Stored config is valid again: drop any boot-time fallback indication.
+     * Serving this request means the config WiFi is up. */
+    StatusLed::set(StatusLed::State::RunningWifi);
+    return sendOk(req);
+}
+
 esp_err_t hConfigPut(httpd_req_t* req)
 {
+    if (!bodyTypeIs(req, BODY_TYPE_PROTOBUF))
+    {
+        return sendError(req, "415 Unsupported Media Type", "expected application/x-protobuf");
+    }
     const size_t len = readBody(req, m_body_buf, sizeof(m_body_buf));
     if (0 == len)
     {
@@ -287,7 +211,7 @@ esp_err_t hConfigPut(httpd_req_t* req)
     }
 
     SysConfig& tmp = m_pending_cfg;
-    if (!decodeConfig(m_body_buf, len, &tmp))
+    if (!ConfigStore::decode(m_body_buf, len, &tmp))
     {
         return sendError(req, "400 Bad Request", "invalid protobuf");
     }
@@ -301,10 +225,23 @@ esp_err_t hConfigPut(httpd_req_t* req)
     {
         tmp.sta_pass[0] = '\0';
     }
+    if ('\0' == tmp.ap_pass[0])
+    {
+        std::strcpy(tmp.ap_pass, m_cfg->ap_pass);
+    }
+    /* Said before the generic check so the answer names the actual problem:
+     * this is the one setting that can lock the page away. */
+    if ('\0' != tmp.ap_ssid[0] &&
+        std::strlen(tmp.ap_pass) < CFG_AP_PASS_MIN)
+    {
+        return sendError(req, "400 Bad Request",
+                         "the access point password needs at least 8 characters");
+    }
     if (!ConfigStore::validate(&tmp))
     {
         return sendError(req, "400 Bad Request",
-                         "invalid config (max 8 sections and 300 LEDs per strip)");
+                         "invalid config: 8 sections and 300 LEDs per strip at most, "
+                         "passwords 8-63 characters, a turn source needs a turn effect");
     }
     for (int i = 0; i < STRIP_COUNT; i++)
     {
@@ -324,33 +261,22 @@ esp_err_t hConfigPut(httpd_req_t* req)
             }
         }
     }
+    if (!effectIdKnown(tmp.fx_hazard_on) || !effectIdKnown(tmp.fx_hazard_off))
+    {
+        return sendError(req, "400 Bad Request", "unknown effect id");
+    }
 
+    if (otaRebootPending())
+    {
+        return sendError(req, "503 Service Unavailable", "rebooting into new firmware");
+    }
     const bool sta_changed =
         0 != std::strcmp(tmp.sta_ssid, m_cfg->sta_ssid) ||
         0 != std::strcmp(tmp.sta_pass, m_cfg->sta_pass) ||
         tmp.sta_active != m_cfg->sta_active;
 
     *m_cfg = tmp;
-    if (ESP_OK == ConfigStore::save(m_cfg))
-    {
-        /* Stored config is valid again: drop any boot-time fallback
-         * indication. Serving this request means the config WiFi is up. */
-        StatusLed::set(StatusLed::State::RunningWifi);
-    }
-    else
-    {
-        ESP_LOGW(TAG, "config NVS save failed (still applied live)");
-    }
-    RenderCore::applyConfig(*m_cfg);
-    InputConditioner::setBrakeHoldoff(
-        static_cast<uint32_t>(m_cfg->brake_holdoff_s) * 1000);
-    InputConditioner::setExitFactor(m_cfg->blink_exit_x10);
-    if (sta_changed && nullptr != m_sta_apply_timer)
-    {
-        esp_timer_stop(m_sta_apply_timer);
-        esp_timer_start_once(m_sta_apply_timer, STA_APPLY_DELAY_US);
-    }
-    return sendOk(req);
+    return applyAndPersist(req, sta_changed);
 }
 
 esp_err_t hEffectsGet(httpd_req_t* req)
@@ -376,6 +302,9 @@ esp_err_t hEffectsGet(httpd_req_t* req)
                            0 == std::strcmp(sec.fx_turn_off, fe->id);
             }
         }
+        assigned = assigned ||
+                   0 == std::strcmp(m_cfg->fx_hazard_on, fe->id) ||
+                   0 == std::strcmp(m_cfg->fx_hazard_off, fe->id);
         motolights_EffectInfo& e = msg.effects[msg.effects_count++];
         strlcpy(e.id, fe->id, sizeof(e.id));
         strlcpy(e.name, fe->name, sizeof(e.name));
@@ -458,6 +387,10 @@ esp_err_t hSysinfoGet(httpd_req_t* req)
 
 esp_err_t hCommandPost(httpd_req_t* req)
 {
+    if (!bodyTypeIs(req, BODY_TYPE_PROTOBUF))
+    {
+        return sendError(req, "415 Unsupported Media Type", "expected application/x-protobuf");
+    }
     uint8_t body[128];
     const size_t len = readBody(req, body, sizeof(body));
     if (0 == len)
@@ -488,11 +421,20 @@ esp_err_t hCommandPost(httpd_req_t* req)
         RenderCore::setOverride(cmd.cmd.override);
         break;
     case motolights_Command_restore_defaults_tag:
+    {
+        if (!cmd.cmd.restore_defaults)
+        {
+            break;              /* presence alone is not a request */
+        }
+        if (otaRebootPending())
+        {
+            return sendError(req, "503 Service Unavailable",
+                             "rebooting into new firmware");
+        }
+        const bool sta_was_set = '\0' != m_cfg->sta_ssid[0] || m_cfg->sta_active;
         ConfigStore::defaults(m_cfg);
-        ConfigStore::save(m_cfg);
-        RenderCore::applyConfig(*m_cfg);
-        StatusLed::set(StatusLed::State::RunningWifi);
-        break;
+        return applyAndPersist(req, sta_was_set);
+    }
     default:
         return sendError(req, "400 Bad Request", "empty command");
     }
@@ -552,6 +494,10 @@ esp_err_t httpStart(SysConfig* live_cfg)
     cfg.task_priority = Tasks::HTTPD.priority;
     cfg.max_uri_handlers = HTTPD_MAX_URI_HANDLERS;
     cfg.lru_purge_enable = true;
+    /* WebSocket pushes go through the same blocking send(): a client that has
+     * stopped reading (phone screen off) must not hold the single httpd task
+     * for the default 5 s per frame. */
+    cfg.send_wait_timeout = HTTPD_SEND_TIMEOUT_S;
     cfg.close_fn = onSockClose;
 
     esp_err_t err = httpd_start(&m_server, &cfg);

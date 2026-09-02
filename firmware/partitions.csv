@@ -1,8 +1,8 @@
-# 4MB flash, OTA-ready layout (OTA implementation itself is post-v1).
+# 4 MB flash: two app slots so an update lands in the spare one and the
+# bootloader can roll back. Nothing mounts a filesystem; the tail is free.
 # Name,     Type, SubType, Offset,   Size
 nvs,        data, nvs,     0x9000,   24K
 otadata,    data, ota,     0xF000,   8K
 phy_init,   data, phy,     0x11000,  4K
 ota_0,      app,  ota_0,   0x20000,  1536K
 ota_1,      app,  ota_1,   ,         1536K
-littlefs,   data, spiffs,  ,         832K

@@ -98,3 +98,9 @@ th{color:var(--dim);font-weight:700;text-transform:uppercase;
   border:1px solid var(--line);border-radius:2px;overflow:hidden}
 .otabar>span{display:block;height:100%;width:0;background:var(--acc);
   transition:width .2s linear}
+
+/* phones: wide tables scroll inside their card instead of being clipped, and
+   the section buttons are finger-sized */
+.tablewrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+[data-move],[data-del]{min-width:44px;min-height:40px;margin-left:6px}
+.simbtns button[aria-pressed="true"],#overridebtn[aria-pressed="true"]{outline:2px solid var(--acc)}

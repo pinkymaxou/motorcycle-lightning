@@ -9,7 +9,7 @@ ESP32 (M5Stamp Pico) on a custom opto-isolated interface PCB (see `pcb/`).
 
 - Reads the bike's 12V lighting signals (left/right turn, brake, aux) through
   optocouplers — turn inputs pulse at the flasher rate; the firmware learns
-  the flasher period, persists it, and leaves "blink mode" 1.5× past the
+  the flasher period, persists it, and leaves "blink mode" 1.2× past the
   expected next flash.
 - Each strip is built as an ordered list of **sections** (up to 8, any
   length): a section has its own animation direction, its own turn source
@@ -24,21 +24,31 @@ ESP32 (M5Stamp Pico) on a custom opto-isolated interface PCB (see `pcb/`).
   named color palette (turn color amber/red/custom), build the sections, and
   test everything — the page shows the module's real frames streamed over a
   WebSocket at ~30 FPS. **The whole protocol (WebSocket and REST) is
-  protobuf** (`firmware/components/net_services/proto/ws_protocol.proto`); there is no JSON anywhere.
+  protobuf** (`firmware/components/protocol/proto/ws_protocol.proto`); the
+  firmware carries no JSON.
   Simulated signals are injected at the head of the one input pipeline, so
   the simulation behaves exactly like the real inputs (including the brake
   holdoff), and an override mode ignores the physical inputs while testing.
 
 All lighting decisions live in the firmware only; the page displays frames.
-Safety floor: factory effects are compiled into the firmware, any config or
-storage failure degrades to working position/brake/turn lighting.
+This is supplementary lighting — the bike keeps its own legal lamps — so the
+firmware fails **dark, never wrong**: a config that cannot be read runs the
+compiled-in defaults, but a strip whose hardware or task fails goes dark
+rather than improvise, and a hung render task is rebooted by the watchdog.
 
 ## Build (ESP-IDF 6.1)
+
+Prerequisites besides ESP-IDF v6.1 itself: `protoc` and the nanopb generator
+plugin, which regenerate the protocol bindings on every build
+(`apt install protobuf-compiler` and `pip install nanopb==0.4.9.1` — the
+generator must match the runtime vendored in `firmware/components/nanopb`).
+CI builds in `espressif/idf:v6.1`; stay on that tag locally too.
 
 ```sh
 cd firmware
 cp main/wifi_creds.h.example main/wifi_creds.h   # optional: seeds the home WiFi
-                                                 # on first boot (gitignored)
+                                                 # into a module that has no
+                                                 # config yet (gitignored)
 source ~/esp/esp-idf-6.1/export.sh
 idf.py set-target esp32
 idf.py build
@@ -81,10 +91,21 @@ sources stay split for editing, the module still serves one request.
   brake-strobe holdoff, simulated-signal injection
 - `firmware/components/event_arbiter/` — inputs + config → layer stack (sections, priorities)
 - `firmware/components/render_core/` — ~75 FPS render task (core 1) + control queue
+- `firmware/components/led_driver/` — WS2812 output over RMT, one device per strip
+- `firmware/components/config_store/` — defaults, validation, protobuf codec, NVS persistence
+- `firmware/components/protocol/` — the `.proto` and its generated nanopb bindings
 - `firmware/components/net_services/` — SoftAP+STA, REST API, WebSocket protobuf push,
-  embedded web app
+  OTA, embedded web app
+- `firmware/components/crash_log/`, `status_led/`, `ui_button/`, `dev_console/`,
+  `tasks/` — crash journal, module LED, button, serial console, task table
 - `firmware/webui/` — the config page: `index.html`, `style.css`, `app.js`
   (display only, no lighting logic), inlined into one asset at build time
 - `firmware/docs/EFFECT_SPEC.md` — normative effect semantics
-- `firmware/components/net_services/proto/ws_protocol.proto` — WebSocket message contract
+- `firmware/components/protocol/proto/ws_protocol.proto` — the wire and storage contract
 - `pcb/` — schematic, layout, EasyEDA project
+
+## License
+
+MIT — see [LICENSE](LICENSE). The nanopb runtime vendored in
+`firmware/components/nanopb/` keeps its own zlib licence
+(`firmware/components/nanopb/LICENSE.txt`).

@@ -76,23 +76,48 @@
         <input type="number" id="holdoff" min="0" max="600" style="width:64px"> s
         <span class="muted">(0 = every time)</span></label>
     </div>
+    <div class="row">
+      <label>Hazard ON <select id="hazon"></select></label>
+      <label>Hazard off phase <select id="hazoff"></select></label>
+    </div>
     <p class="muted">These come from the bike's own signals, so they apply to
-    every strip. What each section does with them is set per section above.</p>
+    every strip. What each section does with them is set per section above.
+    Hazard replaces the turn animation on <b>every</b> section at once — a
+    sweep says "I am going that way", which is not what hazard means.</p>
   </div>
   <div class="card">
     <h2>Colors</h2>
     <p class="muted">A fixed set of semantic colors — the effects use them, you
     tune them. Brightness dims the color itself (safe for layering).</p>
-    <table id="palrows"><thead><tr><th></th><th>Name</th><th>Color</th><th>Brightness</th></tr></thead><tbody></tbody></table>
+    <div class="tablewrap"><table id="palrows"><thead><tr><th></th><th>Name</th><th>Color</th><th>Brightness</th></tr></thead><tbody></tbody></table></div>
   </div>
   <div class="row">
     <button class="btn acc" id="savesetup">Save</button>
+    <button class="btn" id="exportbtn">Export…</button>
+    <button class="btn" id="importbtn">Import…</button>
+    <input type="file" id="importfile" accept=".json,application/json" hidden>
     <span style="flex:1"></span>
     <button class="btn danger" id="restorebtn">Restore defaults</button>
   </div>
 </section>
 
 <section id="tab-wifi">
+  <div class="card">
+    <h2>Access point — the module's own network</h2>
+    <div class="row">
+      <label>SSID <input id="apssid" size="20" maxlength="32"
+        placeholder="MotoLights"></label>
+      <label>Password <input id="appass" type="password" size="16" maxlength="64"
+        placeholder="(unchanged)"></label>
+      <span class="muted" id="apnote"></span>
+    </div>
+    <p class="muted">This is the network you join to reach this page. Leave the
+    SSID blank for the factory one (<b>MotoLights</b> / <b>motolights</b>). A
+    named network needs a password of at least 8 characters, and the change
+    takes effect the next time the config WiFi comes up. Forgot it? Hold the
+    module button for 15 seconds — the LED turns fuchsia and everything goes
+    back to factory.</p>
+  </div>
   <div class="card">
     <h2>WiFi — home network</h2>
     <div class="row">
@@ -102,9 +127,10 @@
       <label><input type="checkbox" id="staactive"> STA active</label>
       <span class="muted" id="stanote"></span>
     </div>
-    <p class="muted">The SoftAP (MotoLights, 192.168.4.1) always stays on while
-    the config WiFi is up. The password is write-only: leave it blank to keep
-    the current one.</p>
+    <p class="muted">Joining your home network only makes this page easier to
+    reach from a laptop. The access point above stays up at the same time, so
+    a wrong password here cannot lock you out. Write-only as well: leave it
+    blank to keep the current one.</p>
   </div>
   <p class="muted">Optional, and only to make the page easier to reach: the
   module brings no radio up on its own at boot — the button does.</p>
@@ -118,10 +144,10 @@
     <h2>Board pinout</h2>
     <p class="muted">Straight from the firmware (main/board_pins.h): what each
     pin of the module is wired to on the PCB.</p>
-    <table id="pintable">
+    <div class="tablewrap"><table id="pintable">
       <thead><tr><th>Signal</th><th style="width:80px">GPIO</th><th>Role</th></tr></thead>
       <tbody></tbody>
-    </table>
+    </table></div>
   </div>
 </section>
 
@@ -129,7 +155,7 @@
   <div class="card">
     <h2>System info <button class="btn" id="sysrefresh"
       style="margin-left:10px;padding:3px 12px">Refresh</button></h2>
-    <table id="systable"><tbody></tbody></table>
+    <div class="tablewrap"><table id="systable"><tbody></tbody></table></div>
     <div class="muted" id="modstatus" style="margin-top:8px">–</div>
   </div>
   <div class="card">

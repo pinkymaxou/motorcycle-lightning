@@ -4,7 +4,7 @@ This document is the single source of truth for effect semantics, implemented
 once in `components/fx/effect_eval.cpp`. Effects are defined as native
 constexpr step tables in `components/fx/factory_effects.cpp` — there is no
 JSON anywhere; the web UI receives only the module's rendered frames (see
-`components/net_services/proto/ws_protocol.proto`). If a client-side preview is ever reintroduced, it
+`components/protocol/proto/ws_protocol.proto`). If a client-side preview is ever reintroduced, it
 must implement this spec exactly.
 
 ## Model
@@ -107,6 +107,12 @@ visibility, the section decides territory. An unassigned event paints nothing.
 - Hazard (both signals blinking) resolves one master channel per strip — the
   one that entered blink mode first, tie to the left — and every section
   follows its phase, so sections and strips cannot drift apart.
+- Hazard may also **replace** the turn effects: the config carries one shared
+  `hazard_on` / `hazard_off` pair, and while both signals blink they stand in
+  for every section's `turn_on` / `turn_off`. Each phase falls back on its own
+  when its id is empty. Hazard is a vehicle state, not a direction, so the
+  override is shared rather than per section, and it is time-scaled to the
+  flasher exactly like the turn effects it replaces.
 - The brake effect's intro (steps before `loop_from`) replays only if the
   brake was released for the configured holdoff; a quicker re-application
   starts the timeline at the loop segment.

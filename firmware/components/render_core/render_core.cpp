@@ -30,8 +30,10 @@ const char* const TAG = "render_core";
 /* ~75 FPS (13 ms is the closest the 1 kHz FreeRTOS tick allows). Every frame
  * is pushed to the strip, even an unchanged one: a continuous refresh is what
  * heals a corrupted WS2812 transmission — a bad pixel is corrected within one
- * frame instead of latching forever. The budget stays comfortable because the
- * wire time is 30 us per LED (3.6 ms at 120 LEDs, ~28% of the period). */
+ * frame instead of latching forever. Wire time is 30 us per LED and the RMT
+ * device is sized to the strip, so a 40-LED bar costs 1.2 ms and the 300-LED
+ * maximum 9 ms; two full-length strips would overrun the period, and the
+ * loop then simply runs as fast as the wire allows. */
 constexpr uint32_t FRAME_PERIOD_MS = 13;
 constexpr uint32_t FRAME_BUDGET_STATS_MS = 1000;
 constexpr uint8_t BRAKE_RED_FLOOR = 64;
@@ -215,7 +217,7 @@ void renderTask(void* arg)
 {
     (void)arg;
 
-    esp_task_wdt_add(nullptr);
+    ESP_ERROR_CHECK(esp_task_wdt_add(nullptr));
 
 
     Bundle* cur = nullptr;              /* nullptr = using the static fallback */
@@ -248,9 +250,10 @@ void renderTask(void* arg)
             {
                 const StripId id = stripAt(i);
                 LedDriver::setReversed(id, sets[i].reversed);
-                /* recreates the RMT device when the strip type changed; we
+                /* recreates the RMT device when type or length changed; we
                  * are on the render task, where RMT channels must be born */
-                LedDriver::setLedType(id, sets[i].led_model, sets[i].color_order);
+                LedDriver::setLayout(id, sets[i].led_model, sets[i].color_order,
+                                     sets[i].led_count);
             }
         }
 
@@ -330,6 +333,10 @@ esp_err_t applyConfig(const SysConfig& cfg)
                                  Fx::FallbackRole::Position);
             sec.brake = loadEffect(bu, sec_cfg.fx_brake, cfg.palette,
                                    Fx::FallbackRole::Brake);
+            set.hazard_on = loadEffect(bu, cfg.fx_hazard_on, cfg.palette,
+                                       Fx::FallbackRole::TurnOn);
+            set.hazard_off = loadEffect(bu, cfg.fx_hazard_off, cfg.palette,
+                                        Fx::FallbackRole::TurnOff);
             /* Off is a deliberate "dark here", so it opts out of the floor. */
             sec.brake_floor = nullptr != sec.brake &&
                               0 != std::strcmp(sec_cfg.fx_brake, Fx::EFFECT_ID_OFF);

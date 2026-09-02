@@ -45,12 +45,38 @@ enum class NetRequest : uint8_t
 };
 
 static std::atomic<NetRequest> m_net_request{ NetRequest::None };
+static std::atomic<bool> m_factory_request;
+
+/* Fuchsia, held for FACTORY_ACK_MS: the button was held long enough and the
+ * module is about to forget everything. Bright on purpose — this is the one
+ * acknowledgement the rider must not miss. */
+constexpr uint8_t FACTORY_ACK_RGB[] = { 60, 0, 40 };
+constexpr uint32_t FACTORY_ACK_MS = 1000;
 
 /* Runs in the shared esp_timer task: starting/stopping WiFi is slow, so only
  * flag the request — the housekeeping loop does the heavy lifting. */
 void onButtonPress()
 {
     m_net_request.store(NetRequest::Toggle);
+}
+
+/* Fires while the button is still held. Erasing NVS blocks, so the timer
+ * context only raises the flag. */
+void onButtonHold()
+{
+    m_factory_request.store(true);
+}
+
+/* Everything the module remembers: configuration, learned flasher period,
+ * crash log. The way back in when the access point's password is lost. */
+void factoryReset()
+{
+    ESP_LOGW(TAG, "button held %us — erasing NVS and rebooting",
+             static_cast<unsigned>(UiButton::HOLD_FACTORY_MS / 1000));
+    StatusLed::solid(FACTORY_ACK_RGB[0], FACTORY_ACK_RGB[1], FACTORY_ACK_RGB[2]);
+    vTaskDelay(pdMS_TO_TICKS(FACTORY_ACK_MS));
+    nvs_flash_erase();
+    esp_restart();
 }
 
 void applyNetRequest(const NetRequest req, const char* source)
@@ -176,16 +202,30 @@ extern "C" void app_main()
     StatusLed::init(PIN_STATUS_LED);
     StatusLed::set(StatusLed::State::Boot);
 
-    /* 4. config (any failure -> compiled defaults, never halt) */
+    /* 4. config (any failure -> compiled defaults, never halt). A module
+     *    with nothing stored yet — fresh, or just factory-reset — is not a
+     *    module whose config was rejected: it runs the defaults without the
+     *    purple LED. */
     bool cfg_fallback = false;
-    if (ESP_OK != ConfigStore::init() || ESP_OK != ConfigStore::load(&m_cfg))
+    bool cfg_absent = false;
+    esp_err_t cfg_err = ConfigStore::init();
+    if (ESP_OK == cfg_err)
+    {
+        cfg_err = ConfigStore::load(&m_cfg);
+    }
+    if (ESP_OK != cfg_err)
     {
         ConfigStore::defaults(&m_cfg);
-        cfg_fallback = true;
-        ESP_LOGW(TAG, "using compiled default config");
+        cfg_absent = (ESP_ERR_NVS_NOT_FOUND == cfg_err);
+        cfg_fallback = !cfg_absent;
+        ESP_LOGW(TAG, "using compiled default config (%s)",
+                 cfg_absent ? "nothing stored" : esp_err_to_name(cfg_err));
     }
-    /* seed the STA settings from the optional compiled-in credentials */
-    if ('\0' == m_cfg.sta_ssid[0] && '\0' != WIFI_STA_SSID[0])
+    /* Seed the STA settings from the optional compiled-in credentials — only
+     * into a module that has no config at all. Seeding whenever the SSID is
+     * empty would write the developer's network back over a rider who
+     * deliberately cleared it. */
+    if (cfg_absent && '\0' != WIFI_STA_SSID[0])
     {
         strlcpy(m_cfg.sta_ssid, WIFI_STA_SSID, sizeof(m_cfg.sta_ssid));
         strlcpy(m_cfg.sta_pass, WIFI_STA_PASS, sizeof(m_cfg.sta_pass));
@@ -205,8 +245,16 @@ extern "C" void app_main()
         static_cast<uint32_t>(m_cfg.brake_holdoff_s) * 1000);
     ESP_ERROR_CHECK(RenderCore::start());
 
-    /* 6. configured effect set (per-effect fallback inside) */
-    RenderCore::applyConfig(m_cfg);
+    /* 6. configured effect set (per-effect fallback inside). If it cannot be
+     *    built, the strip keeps the hard-fallback set — say so on the LED
+     *    rather than showing a green "all is well" over the wrong geometry. */
+    const esp_err_t applied = RenderCore::applyConfig(m_cfg);
+    if (ESP_OK != applied)
+    {
+        ESP_LOGE(TAG, "applyConfig failed: %s — running the fallback set",
+                 esp_err_to_name(applied));
+        cfg_fallback = true;
+    }
 
     /* 7. network stays OFF at boot — riding needs no radio. The module
      *    button brings the config WiFi up on demand. */
@@ -215,7 +263,7 @@ extern "C" void app_main()
                   "'wifi on' to enable it");
 
     /* 8. button hook + serial console ("wifi on" brings the page up) */
-    UiButton::init(PIN_BUTTON, onButtonPress);
+    UiButton::init(PIN_BUTTON, onButtonPress, onButtonHold);
     DevConsole::start(onConsoleLine);
 
     if (cfg_fallback)
@@ -275,6 +323,10 @@ extern "C" void app_main()
     for (;;)
     {
         vTaskDelay(pdMS_TO_TICKS(HOUSEKEEPING_PERIOD_MS));
+        if (m_factory_request.exchange(false))
+        {
+            factoryReset();
+        }
         const NetRequest req = m_net_request.exchange(NetRequest::None);
         if (NetRequest::None != req)
         {

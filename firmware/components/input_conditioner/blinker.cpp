@@ -89,14 +89,17 @@ void turnTick(BlinkSystem* s, BlinkChannel* c, const bool raw,
 
     if (edge > 0)
     {
-        if (c->blink_mode)
+        /* Learn from every ON->ON interval, in or out of blink mode. A
+         * flasher slower than period x exit leaves blink mode before its
+         * next ON edge, so learning only inside the mode could never
+         * measure it — the estimate would stay wrong forever, and the
+         * section would fall back to brake between two flashes. The
+         * PERIOD_MIN/MAX window in learnPeriod() rejects a real gap. */
+        if (0 != c->last_on_edge_ms && now_ms > c->last_on_edge_ms)
         {
-            if (now_ms > c->last_on_edge_ms)
-            {
-                learnPeriod(s, now_ms - c->last_on_edge_ms);
-            }
+            learnPeriod(s, now_ms - c->last_on_edge_ms);
         }
-        else
+        if (!c->blink_mode)
         {
             c->blink_start_ms = now_ms;  /* entering blink mode */
         }

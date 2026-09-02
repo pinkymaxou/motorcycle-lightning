@@ -17,12 +17,16 @@ motolights.Section.turn_on      max_size:16
 motolights.Section.turn_off     max_size:16
 motolights.Section.aux          max_size:16
 
+motolights.ApConfig.ssid        max_size:33
+motolights.ApConfig.pass        max_size:65
 motolights.StaConfig.ssid       max_size:33
 motolights.StaConfig.pass       max_size:65
 
 # Two physical outputs, four palette colors (see sys_config.h).
 motolights.Config.strips        max_count:2
 motolights.Config.colors        max_count:4
+motolights.Config.hazard_on     max_size:16
+motolights.Config.hazard_off    max_size:16
 
 motolights.EffectInfo.id        max_size:16
 motolights.EffectInfo.name      max_size:32

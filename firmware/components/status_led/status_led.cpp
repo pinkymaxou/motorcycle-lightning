@@ -38,12 +38,22 @@ constexpr Rgb COLOR_CFG_FALLBACK = { 30, 0, 30 };   /* purple */
 static led_strip_handle_t m_strip;
 static esp_timer_handle_t m_timer;
 static std::atomic<State> m_state{ State::Boot };
+static std::atomic<bool> m_solid;
+static std::atomic<uint32_t> m_solid_rgb;
 static bool m_phase;
 static TaskHandle_t m_init_waiter;
 
 void tickCb(void* arg)
 {
     (void)arg;
+    if (m_solid.load(std::memory_order_relaxed))
+    {
+        const uint32_t v = m_solid_rgb.load(std::memory_order_relaxed);
+        led_strip_set_pixel(m_strip, 0, (v >> 16) & 0xFF, (v >> 8) & 0xFF,
+                            v & 0xFF);
+        led_strip_refresh(m_strip);
+        return;
+    }
     m_phase = !m_phase;
     Rgb c = COLOR_OFF;
     switch (m_state.load())
@@ -135,6 +145,13 @@ esp_err_t init(const int gpio)
 void set(const State state)
 {
     m_state.store(state);
+}
+
+void solid(const uint8_t r, const uint8_t g, const uint8_t b)
+{
+    m_solid_rgb.store((static_cast<uint32_t>(r) << 16) |
+                      (static_cast<uint32_t>(g) << 8) | b);
+    m_solid.store(true);
 }
 
 } // namespace StatusLed

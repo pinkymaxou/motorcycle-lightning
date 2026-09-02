@@ -38,6 +38,11 @@ struct StripSet
     uint8_t    n_sections;
     uint16_t   led_count;   /* sum of the section lengths; 0 = not installed */
 
+    /* Hazard overrides, shared by every section of the strip. nullptr =
+     * the section keeps its own turn effect for that phase. */
+    const Fx::FxEffect* hazard_on;
+    const Fx::FxEffect* hazard_off;
+
     /* output hardware */
     LedModel   led_model;
     ColorOrder color_order;

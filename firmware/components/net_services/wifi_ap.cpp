@@ -17,8 +17,12 @@ namespace
 const char* const TAG = "wifi";
 
 /* SoftAP identity — page always reachable at http://192.168.4.1 */
-constexpr const char* AP_SSID = "MotoLights";
-constexpr const char* AP_PASS = "motolights";
+/* Used when the configuration names no access point of its own, so a module
+ * that was never configured (or was just reset) always has a way in. */
+constexpr const char* AP_SSID_DEFAULT = "MotoLights";
+constexpr const char* AP_PASS_DEFAULT = "motolights";
+
+static const char* m_ap_ssid = AP_SSID_DEFAULT;
 constexpr uint8_t AP_CHANNEL = 6;    /* follows the STA channel when joined */
 constexpr uint8_t AP_MAX_STA = 4;
 
@@ -77,7 +81,17 @@ esp_err_t applyStaConfig(const char* ssid, const char* pass)
 
 } // namespace
 
-esp_err_t wifiStart(const char* sta_ssid, const char* sta_pass,
+/* A start that dies after esp_wifi_init() must undo it: the next attempt's
+ * esp_wifi_init() would otherwise answer ESP_ERR_INVALID_STATE, and every
+ * button press from then on would give the orange LED until a power cycle. */
+esp_err_t failStart(const esp_err_t err)
+{
+    esp_wifi_deinit();
+    return err;
+}
+
+esp_err_t wifiStart(const char* ap_ssid, const char* ap_pass,
+                    const char* sta_ssid, const char* sta_pass,
                     const bool sta_active)
 {
     esp_err_t err;
@@ -120,11 +134,14 @@ esp_err_t wifiStart(const char* sta_ssid, const char* sta_pass,
         return err;
     }
 
+    m_ap_ssid = ('\0' != ap_ssid[0]) ? ap_ssid : AP_SSID_DEFAULT;
+    const char* const pass = ('\0' != ap_ssid[0]) ? ap_pass : AP_PASS_DEFAULT;
+
     wifi_config_t ap_cfg = {};
-    strlcpy(reinterpret_cast<char*>(ap_cfg.ap.ssid), AP_SSID,
+    strlcpy(reinterpret_cast<char*>(ap_cfg.ap.ssid), m_ap_ssid,
             sizeof(ap_cfg.ap.ssid));
-    ap_cfg.ap.ssid_len = std::strlen(AP_SSID);
-    strlcpy(reinterpret_cast<char*>(ap_cfg.ap.password), AP_PASS,
+    ap_cfg.ap.ssid_len = std::strlen(m_ap_ssid);
+    strlcpy(reinterpret_cast<char*>(ap_cfg.ap.password), pass,
             sizeof(ap_cfg.ap.password));
     ap_cfg.ap.channel = AP_CHANNEL;
     ap_cfg.ap.max_connection = AP_MAX_STA;
@@ -134,26 +151,26 @@ esp_err_t wifiStart(const char* sta_ssid, const char* sta_pass,
     err = esp_wifi_set_mode(m_sta_enabled ? WIFI_MODE_APSTA : WIFI_MODE_AP);
     if (ESP_OK != err)
     {
-        return err;
+        return failStart(err);
     }
     err = esp_wifi_set_config(WIFI_IF_AP, &ap_cfg);
     if (ESP_OK != err)
     {
-        return err;
+        return failStart(err);
     }
     if (m_sta_enabled)
     {
         err = applyStaConfig(sta_ssid, sta_pass);
         if (ESP_OK != err)
         {
-            return err;
+            return failStart(err);
         }
     }
 
     err = esp_wifi_start();
     if (ESP_OK != err)
     {
-        return err;
+        return failStart(err);
     }
 
     /* Powered by the bike's battery: latency beats microamps. Modem
@@ -161,7 +178,7 @@ esp_err_t wifiStart(const char* sta_ssid, const char* sta_pass,
     esp_wifi_set_ps(WIFI_PS_NONE);
 
     m_wifi_running = true;
-    ESP_LOGI(TAG, "SoftAP '%s' up at http://192.168.4.1%s", AP_SSID,
+    ESP_LOGI(TAG, "SoftAP '%s' up at http://192.168.4.1%s", m_ap_ssid,
              m_sta_enabled ? ", STA joining home network..." : "");
     return ESP_OK;
 }
@@ -245,7 +262,8 @@ const char* wifiStaIp()
 
 esp_err_t start(SysConfig* live_cfg)
 {
-    const esp_err_t err = wifiStart(live_cfg->sta_ssid, live_cfg->sta_pass,
+    const esp_err_t err = wifiStart(live_cfg->ap_ssid, live_cfg->ap_pass,
+                                    live_cfg->sta_ssid, live_cfg->sta_pass,
                                     live_cfg->sta_active);
     if (ESP_OK != err)
     {

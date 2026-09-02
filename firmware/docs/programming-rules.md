@@ -13,19 +13,24 @@ House rules for this codebase. They exist because each one was earned.
    flasher wave for turns), so every downstream rule (debounce, blink
    tracking, brake holdoff) applies identically to real and simulated input.
    Never merge simulated state further down.
-3. **Pure, host-testable cores.** Decision logic (`blinker.c`,
-   `effect_eval.c`, `compositor.c`, `event_arbiter.c`) has zero ESP-IDF
-   dependencies and compiles on the host. Every behavior rule gets a host
-   test (`test/host/run_tests.sh`). ESP-specific code is a thin wrapper.
-4. **Safety first, always.** Boot order lights the strip from compiled-in
-   fallback effects before storage or network are touched. Any config,
-   filesystem, or network failure degrades to working position/brake/turn
-   lighting — never to darkness. The render task never parses JSON, never
-   takes a mutex, and never blocks on flash; changes cross over via an
+3. **Pure, host-testable cores.** Decision logic (`blinker.cpp`,
+   `effect_eval.cpp`, `event_arbiter.cpp`, `config_rules.cpp`,
+   `config_proto.cpp`) has zero ESP-IDF dependencies and compiles on the
+   host; `test/host/run_tests.sh` covers the blinker, the effect evaluator,
+   the arbiter and the config codec. A behaviour rule that lives in one of
+   those files gets a host test. ESP-specific code is a thin wrapper.
+4. **Safety first, always — and fail dark, never wrong.** The strips are
+   latched black before anything else runs, and the boot order lights them
+   from compiled-in fallback effects before storage or network are touched.
+   A config that cannot be read runs the compiled defaults; a strip whose
+   hardware fails, or a render task that hangs, goes dark (the watchdog
+   reboots it) rather than improvise a signal. Never add a retry or fallback
+   whose purpose is "keep something lit". The render task never takes a
+   mutex and never blocks on flash; changes cross over via an
    ownership-transfer queue.
 5. **Contracts are files, and they move with the code.**
    `docs/EFFECT_SPEC.md` (effect semantics) is normative, and
-   `components/net_services/proto/ws_protocol.proto` *is* the protocol:
+   `components/protocol/proto/ws_protocol.proto` *is* the protocol:
    nanopb regenerates the C bindings from it on every build, so the firmware
    cannot drift from it. The webpage decodes the same wire format by hand
    (no bundler there — `tools/build_webui.sh` only inlines and gzips), so a
@@ -43,15 +48,17 @@ House rules for this codebase. They exist because each one was earned.
    strips split the rest (`RMT_MEM_BLOCK_SYMBOLS` in `led_driver.cpp`, with a
    `static_assert`). Over-asking does not degrade — the last strip created
    gets `ESP_ERR_NOT_FOUND` and stays dark.
-7. **The stored config is a raw struct, so it is guarded three ways.**
-   `SysConfig` goes into NVS byte for byte (key `syscfg`, namespace
-   `motolight`), prefixed by a CRC32 over it. `load()` accepts it only if the
-   blob length matches `sizeof(StoredConfig)`, the CRC matches, **and**
-   `validate()` passes; anything else boots the compiled defaults with the
-   purple status LED. Any change to `sys_config.h` — a field added, resized
-   or reordered — therefore means bumping `CFG_VERSION`, because the layout
-   *is* the format. The learned flasher period lives in its own key
-   (`blinkms`) so it survives that reset.
+7. **The stored config is protobuf, and it is guarded three ways.**
+   `SysConfig` goes into NVS as the *same* protobuf encoding the API speaks
+   (key `syscfgpb`, namespace `motolight`), prefixed by a CRC32 over it —
+   one codec in `config_store/config_proto.cpp`, so wire and flash cannot
+   drift apart. `load()` accepts it only if the CRC matches, the message
+   decodes, **and** `validate()` passes; anything else boots the compiled
+   defaults with the purple status LED. Adding a field to the .proto is
+   therefore additive: an older build skips what it does not know, a newer
+   one defaults it, and nobody has to re-enter their configuration. Removing
+   or repurposing a field number is the breaking move — reserve it instead.
+   The learned flasher period lives in its own key (`blinkms`).
 8. **Single-writer snapshots over locks.** Cross-task state is published
    with C11 atomics by one writer and read by one reader (input snapshot,
    frame mirror, stats). Blocking flash writes (NVS) happen only in
@@ -61,9 +68,10 @@ House rules for this codebase. They exist because each one was earned.
 
 ## Style
 
-10. **No magic numbers or magic strings.** Use `#define`/named constants for
-   timeouts, thresholds, ids, field numbers. (Factory-effect JSON literals
-   are the data itself and are exempt.)
+10. **No magic numbers or magic strings.** Use named `constexpr` constants
+   (or `#define` where a macro is unavoidable) for timeouts, thresholds,
+   ids, field numbers. The factory-effect step tables are the data itself
+   and are exempt.
 11. **`const` locals.** Any local variable that is never reassigned after
     initialization is declared `const` (and `T *const` where it applies).
 12. **Comments state constraints, not narration.** A comment earns its place

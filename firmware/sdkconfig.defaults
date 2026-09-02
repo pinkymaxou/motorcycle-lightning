@@ -1,6 +1,6 @@
 CONFIG_IDF_TARGET="esp32"
 
-# 1 kHz tick so vTaskDelayUntil(16ms) is precise for the 60 FPS render loop
+# 1 kHz tick so vTaskDelayUntil(13ms) is precise for the ~75 FPS render loop
 CONFIG_FREERTOS_HZ=1000
 
 CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
@@ -9,8 +9,7 @@ CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
 
 CONFIG_COMPILER_OPTIMIZATION_PERF=y
 
-# HTTP server: wildcard URIs for /api/effects/{id}, roomy headers for browsers,
-# WebSocket push for the live strip view
+# HTTP server: roomy headers for browsers, WebSocket push for the live view
 CONFIG_HTTPD_MAX_REQ_HDR_LEN=2048
 CONFIG_HTTPD_MAX_URI_LEN=128
 CONFIG_HTTPD_WS_SUPPORT=y
@@ -21,6 +20,7 @@ CONFIG_LWIP_MAX_SOCKETS=10
 # module, not just log: frozen lights are worse than dark ones, and the boot
 # sequence latches the strips black before anything else runs.
 CONFIG_ESP_TASK_WDT_EN=y
+CONFIG_ESP_TASK_WDT_INIT=y
 CONFIG_ESP_TASK_WDT_TIMEOUT_S=5
 CONFIG_ESP_TASK_WDT_PANIC=y
 # The panic handler itself must not live in flash. We write to flash (config,

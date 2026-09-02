@@ -15,6 +15,10 @@ enum class State : uint8_t
     ConfigFallback   /* purple blink */
 };
 
+/* Hold one colour, ignoring the blink pattern, until the module reboots.
+ * Used to acknowledge a factory reset before the NVS is erased. */
+void solid(uint8_t r, uint8_t g, uint8_t b);
+
 esp_err_t init(int gpio);
 void set(State state);
 

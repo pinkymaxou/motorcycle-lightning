@@ -1,4 +1,7 @@
-/* Persistence: system config as a versioned NVS blob. */
+/* Persistence and the config's wire form. Both are the same protobuf
+ * encoding: a field added to the .proto is skipped by an older build and
+ * defaulted by a newer one, so the stored configuration survives a schema
+ * change instead of being thrown away. */
 #pragma once
 
 #include "esp_err.h"
@@ -19,7 +22,20 @@ uint32_t  loadBlinkPeriod();
 esp_err_t saveBlinkPeriod(uint32_t period_ms);
 
 /* Sanity validation: ranges, enums, and NUL-terminated strings (a corrupt
- * NVS blob of the right size must never yield unterminated strings). */
+ * blob must never yield unterminated strings). */
 bool validate(const SysConfig* cfg);
+
+/* The WiFi password is write-only over the wire: the page is told that one
+ * is set, never what it is. Storage obviously needs the real thing. */
+enum class Secrets : uint8_t
+{
+    Omit = 0,
+    Include
+};
+
+/* Returns the encoded length, 0 on failure. */
+size_t encode(const SysConfig& cfg, uint8_t* out, size_t cap, Secrets secrets);
+bool decode(const uint8_t* data, size_t len, SysConfig* cfg);
+
 
 } // namespace ConfigStore

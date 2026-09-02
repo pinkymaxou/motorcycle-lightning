@@ -2,12 +2,13 @@
 if(!CanvasRenderingContext2D.prototype.roundRect)
   CanvasRenderingContext2D.prototype.roundRect=function(x,y,w,h){this.rect(x,y,w,h);return this;};
 
-/* ============ protobuf wire format (docs/ws_protocol.proto) ============ */
+/* ====== protobuf wire format (components/protocol/proto/ws_protocol.proto) ====== */
 const TENC=new TextEncoder(),TDEC=new TextDecoder();
 function pbW(){
   const b=[];
   const w={
-    varint(v){v=Math.floor(v);for(;;){const x=v&0x7f;v=Math.floor(v/128);
+    varint(v){v=Math.floor(Number(v));if(!(v>=0&&v<2**53))v=0;
+      for(;;){const x=v&0x7f;v=Math.floor(v/128);
       if(v){b.push(x|0x80)}else{b.push(x);return}}},
     tag(f,wt){w.varint(f*8+wt)},
     uint(f,v){if(!v)return;w.tag(f,0);w.varint(v)},
@@ -85,17 +86,24 @@ function decodeStrip(u8){
 }
 function decodeConfig(u8){
   const c={strips:[],colors:[0,0,0,0],exit_x10:12,holdoff_s:0,
-    sta:{ssid:'',active:false,pass_set:false}};
+    hazard_on:'',hazard_off:'',
+    sta:{ssid:'',active:false,pass_set:false},
+    ap:{ssid:'',pass_set:false}};
   pbScan(u8,(f,v,s)=>{
     switch(f){
     case 1:c.strips.push(decodeStrip(s));break;
     case 2:c.colors=packedF32(s);break;
     case 3:c.exit_x10=v;break;
     case 4:c.holdoff_s=v;break;
+    case 6:c.hazard_on=TDEC.decode(s);break;
+    case 7:c.hazard_off=TDEC.decode(s);break;
     case 5:pbScan(s,(ff,vv,ss)=>{
       if(ff===1)c.sta.ssid=TDEC.decode(ss);
       else if(ff===3)c.sta.active=!!vv;
       else if(ff===4)c.sta.pass_set=!!vv;});break;
+    case 8:pbScan(s,(ff,vv,ss)=>{
+      if(ff===1)c.ap.ssid=TDEC.decode(ss);
+      else if(ff===3)c.ap.pass_set=!!vv;});break;
     }
   });
   while(c.strips.length<STRIP_COUNT)c.strips.push(emptyStrip());
@@ -116,14 +124,18 @@ function encodeStrip(st){
   for(const sec of st.sections)w.bytesAlways(9,encodeSection(sec));
   return Array.from(w.out());
 }
-function encodeConfig(c,staPass){
+function encodeConfig(c,staPass,apPass){
   const w=pbW();
   for(let i=0;i<STRIP_COUNT;i++)w.bytesAlways(1,encodeStrip(c.strips[i]));
   w.packedF32(2,c.colors);
   w.uintAlways(3,c.exit_x10);w.uintAlways(4,c.holdoff_s);
+  w.str(6,c.hazard_on);w.str(7,c.hazard_off);
   const s=pbW();
   s.str(1,c.sta.ssid);s.str(2,staPass||'');s.boolAlways(3,c.sta.active);
   w.bytesAlways(5,Array.from(s.out()));
+  const a=pbW();
+  a.str(1,c.ap.ssid);a.str(2,apPass||'');
+  w.bytesAlways(8,Array.from(a.out()));
   return w.out();
 }
 
@@ -136,7 +148,7 @@ function sectionRanges(st){
 const TURN_LABEL=['—','LEFT','RIGHT'];
 /* short role tag for legends and timeline lanes */
 function sectionTag(sec){
-  if(sec.turn)return TURN_LABEL[sec.turn][0];
+  if(sec.turn&&TURN_LABEL[sec.turn])return TURN_LABEL[sec.turn][0];
   if(sec.brake)return 'B';
   if(sec.idle)return 'P';
   return '·';
@@ -387,7 +399,7 @@ function renderLiveStrips(){
        <canvas class="strip" data-live="${i}" width="900" height="44"></canvas>
        <div class="row muted" style="margin:3px 0 0">
          ${st.sections.map((sec,k)=>
-           `<span>${k+1}: ${sec.led_count} ${TURN_LABEL[sec.turn]==='—'?
+           `<span>${k+1}: ${sec.led_count} ${(TURN_LABEL[sec.turn]||'—')==='—'?
              (sec.brake?'brake':'position'):TURN_LABEL[sec.turn].toLowerCase()+' turn'}`+
            `${sec.reversed?' ◂':''}</span>`).join(' · ')}
        </div>`);
@@ -434,11 +446,19 @@ function wsConnect(){
       }
     });
   };
-  ws.onopen=()=>{$('livestate').textContent='live';};
+  ws.onopen=()=>{
+    $('livestate').textContent='live';
+    if(otaPending)location.reload();   /* the new firmware is up */
+  };
   ws.onclose=()=>{
     $('livestate').textContent='offline';
     $('linkdot').classList.remove('on');
     $('linkinfo').textContent='offline';
+    /* stale is worse than blank on a diagnostics page */
+    lastStatus=null;lastFrame.fill(null);
+    for(const id of ['ri-left','ri-right','ri-brake','ri-aux'])
+      $(id).classList.remove('on','dimphase');
+    $('ri-note').textContent='offline';
     setTimeout(wsConnect,2000);
   };
   ws.onerror=()=>ws.close();
@@ -470,6 +490,7 @@ document.querySelectorAll('[data-sim]').forEach(b=>{
 let overrideOn=false;
 $('overridebtn').onclick=async()=>{
   overrideOn=!overrideOn;
+  $('overridebtn').setAttribute('aria-pressed',overrideOn);
   $('overridebtn').classList.toggle('on',overrideOn);
   try{await CMD(cmdOverride(overrideOn));}
   catch(e){toast('module: '+e,true);}
@@ -498,6 +519,10 @@ async function loadIndex(){
   if(cfg)renderShared();
 }
 function renderWifi(){
+  $('apssid').value=cfg.ap.ssid;
+  $('appass').value='';
+  $('apnote').textContent=cfg.ap.pass_set?'password saved'
+    :cfg.ap.ssid?'no password — save one':'factory access point';
   $('stassid').value=cfg.sta.ssid;
   $('staactive').checked=cfg.sta.active;
   $('stanote').textContent=cfg.sta.pass_set?'password saved':'no password';
@@ -506,6 +531,10 @@ function renderShared(){
   /* Per-section effects live in the section editor above; these two come from
      the bike's own signals and apply to every strip. */
   $('holdoff').value=cfg.holdoff_s;
+  const hazopts=(sel,none)=>[`<option value="">${none}</option>`,
+    ...fxIndex.map(e=>`<option value="${e.id}" ${sel===e.id?'selected':''}>${esc(e.name)}</option>`)].join('');
+  $('hazon').innerHTML=hazopts(cfg.hazard_on,'— same as turn signal —');
+  $('hazoff').innerHTML=hazopts(cfg.hazard_off,'— same as turn signal —');
   const tc=(cfg.colors[COLOR_TURN]>>>0);
   $('turncolor').value=tc===TURN_AMBER?'amber':tc===TURN_RED?'red':'custom';
 }
@@ -626,11 +655,11 @@ function renderSetup(){
       <div class="striplabel">Sections — laid end to end from the connector
         <span class="muted" data-feed="${si}"></span></div>
       <canvas class="strip" data-zc="${si}" width="900" height="30"></canvas>
-      <table><thead><tr>
+      <div class="tablewrap"><table><thead><tr>
         <th style="width:24px">#</th><th style="width:90px">LEDs</th>
         <th style="width:120px">Direction</th><th>Role</th><th></th>
       </tr></thead><tbody>${rows||
-        '<tr><td colspan="5" class="muted">no section yet</td></tr>'}</tbody></table>
+        '<tr><td colspan="5" class="muted">no section yet</td></tr>'}</tbody></table></div>
       <div class="row">
         <button class="btn" data-add="${si}"
           ${st.sections.length>=MAX_SECTIONS?'disabled':''}>＋ section</button>
@@ -711,6 +740,7 @@ function bindSetupHandlers(){
   });
   host.querySelectorAll('[data-del]').forEach(el=>el.onclick=()=>{
     const[si,k]=el.dataset.del.split(':').map(Number);
+    if(!confirm(`Delete section ${k+1} of ${STRIP_LABEL(si)}?`))return;
     cfg.strips[si].sections.splice(k,1);
     renderSetup();
   });
@@ -781,14 +811,19 @@ async function saveConfig(){
     }
   }
   cfg.holdoff_s=Math.max(0,Math.min(600,+$('holdoff').value||0));
+  cfg.hazard_on=$('hazon').value;
+  cfg.hazard_off=$('hazoff').value;
   const turn=$('turncolor').value;
   if(turn!=='custom')cfg.colors[COLOR_TURN]=turn==='red'?TURN_RED:TURN_AMBER;
   cfg.sta.ssid=$('stassid').value.trim();
   cfg.sta.active=$('staactive').checked;
-  const pass=$('stapass').value;   /* empty = keep current */
+  cfg.ap.ssid=$('apssid').value.trim();
+  const pass=$('stapass').value;     /* empty = keep current */
+  const appass=$('appass').value;    /* same rule; the module checks it */
   try{
-    await api('config',{method:'PUT',body:encodeConfig(cfg,pass)});
+    await api('config',{method:'PUT',body:encodeConfig(cfg,pass,appass)});
     $('stapass').value='';
+    $('appass').value='';
     cfg=decodeConfig(await api('config'));
     renderAll();
     clearDirty();
@@ -797,6 +832,88 @@ async function saveConfig(){
 }
 $('savesetup').onclick=saveConfig;
 $('savewifi').onclick=saveConfig;
+/* ---- export / import ----
+   Plain JSON, written and read here rather than in the firmware: the module
+   has no business carrying a JSON writer, and an import goes back through
+   the same PUT as any other change, so the module still validates it.
+   Passwords are never in the file — the API does not hand them out. */
+const EXPORT_FORMAT=1;
+/* Colors are 0xRRGGBBAA inside the page; a file people read gets #RRGGBB and
+   the alpha spelled out as what it actually is — a brightness. */
+const colorToHex=v=>'#'+((v>>>8)&0xFFFFFF).toString(16).padStart(6,'0').toUpperCase();
+const colorFromHex=(hex,brightness)=>
+  (((parseInt(String(hex).replace('#',''),16)&0xFFFFFF)*256)+
+   (brightness&255))>>>0;
+function exportDoc(){
+  const strips=cfg.strips.map(st=>Object.assign({},st,{sections:st.sections.map(sec=>{
+    const s=Object.assign({},sec);delete s.fx_open;return s;})}));
+  const sta=Object.assign({},cfg.sta);delete sta.pass_set;
+  const ap=Object.assign({},cfg.ap);delete ap.pass_set;
+  return {motolights:EXPORT_FORMAT,exported:new Date().toISOString(),
+    note:'passwords are not exported',
+    config:Object.assign({},cfg,{strips,sta,ap,colors:cfg.colors.map((v,i)=>({
+      name:COLOR_NAMES[i],rgb:colorToHex(v>>>0),brightness:(v>>>0)&255}))})};
+}
+/* Merged onto a fresh shape so a file written by an older page (missing a
+   key that has since appeared) still opens, then pushed through the module's
+   own codec: every scalar comes back as its wire type, unknown keys vanish,
+   and a value the encoder cannot represent is a refusal here rather than a
+   broken page. What the module holds (pass_set) is never taken from a file. */
+function adoptDoc(doc){
+  if(!doc||'object'!==typeof doc||!doc.config||!Array.isArray(doc.config.strips))
+    throw 'not a MotoLights configuration file';
+  if(EXPORT_FORMAT<doc.motolights)
+    throw 'this file comes from a newer page — update the module first';
+  if(EXPORT_FORMAT!==doc.motolights)
+    throw 'not a MotoLights configuration file';
+  const base=decodeConfig(new Uint8Array());
+  const keep=cfg||base;
+  const c=doc.config;
+  const merged=Object.assign(base,c,{
+    colors:base.colors.map((_,i)=>{
+      const v=(c.colors||[])[i];
+      if('object'===typeof v&&v)return colorFromHex(v.rgb,v.brightness);
+      return 'number'===typeof v&&v?(v>>>0):(keep.colors[i]>>>0);
+    }),
+    sta:Object.assign({},base.sta,c.sta||{},{pass_set:keep.sta.pass_set}),
+    ap:Object.assign({},base.ap,c.ap||{},{pass_set:keep.ap.pass_set}),
+    strips:c.strips.map(st=>Object.assign(emptyStrip(),st,
+      {sections:(st.sections||[]).map(sec=>Object.assign(emptySection(),sec))})),
+  });
+  const wire=encodeConfig(merged,'','');
+  const clean=decodeConfig(wire);
+  clean.sta.pass_set=keep.sta.pass_set;
+  clean.ap.pass_set=keep.ap.pass_set;
+  if(clean.strips.some(st=>st.sections.some(sec=>!TURN_LABEL[sec.turn])))
+    throw 'a section has an unknown turn source';
+  cfg=clean;
+}
+$('exportbtn').onclick=()=>{
+  const doc=exportDoc();
+  const url=URL.createObjectURL(new Blob([JSON.stringify(doc,null,2)],
+    {type:'application/json'}));
+  const a=document.createElement('a');
+  a.href=url;
+  a.download='motolights-config-'+new Date().toISOString().slice(0,10)+'.json';
+  a.click();
+  URL.revokeObjectURL(url);
+  toast('exported ✓');
+};
+$('importbtn').onclick=()=>$('importfile').click();
+$('importfile').onchange=async e=>{
+  e.stopPropagation();   /* the tab's own change listener would mark it dirty */
+  const f=e.target.files[0];
+  if(!f)return;
+  try{
+    /* Loaded into the page, not sent: you see it, then you press Save. */
+    adoptDoc(JSON.parse(await f.text()));
+    renderAll();
+    markDirty();
+    toast('loaded — review it, then Save');
+  }catch(err){toast('import: '+err,true);}
+  finally{e.target.value='';}
+};
+
 $('restorebtn').onclick=async()=>{
   if(!confirm('Restore factory sections and setup?'))return;
   try{
@@ -879,7 +996,8 @@ async function loadSysinfo(){
 $('sysrefresh').onclick=loadSysinfo;
 
 /* ---- firmware update ---- */
-const OTA_REBOOT_MS=8000;
+let otaPending=false;
+const OTA_RELOAD_FALLBACK_MS=30000;
 $('otabtn').onclick=()=>{
   const f=$('otafile').files[0];
   if(!f)return toast('choose a .bin file first',true);
@@ -900,8 +1018,13 @@ $('otabtn').onclick=()=>{
   xhr.onload=()=>{
     if(200!==xhr.status)return done(xhr.responseText||`HTTP ${xhr.status}`,true);
     $('otafill').style.width='100%';
-    done('written — rebooting, this page reloads on its own');
-    setTimeout(()=>location.reload(),OTA_REBOOT_MS);
+    $('otastate').textContent='written — rebooting, this page reloads when the module is back';
+    /* stay disabled: a second upload would hit a rebooting module. Nothing
+       here is unsaved any more, so leaving must not ask. */
+    clearDirty();
+    otaPending=true;
+    setTimeout(()=>{if(otaPending)$('otastate').textContent=
+      'still waiting — reload this page by hand if the module is up';},OTA_RELOAD_FALLBACK_MS);
   };
   xhr.onerror=()=>done('upload failed — the module went away',true);
   $('otabtn').disabled=true;

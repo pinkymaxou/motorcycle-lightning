@@ -41,6 +41,7 @@ struct Strip
 {
     led_strip_handle_t handle;
     int gpio;
+    uint16_t led_count;  /* the device is sized to the strip: 0 = no device */
     bool reversed;
     LedModel model;
     ColorOrder order;
@@ -102,20 +103,32 @@ led_color_component_format_t formatFor(const ColorOrder order, const bool wide)
 
 /* (Re)create one strip's RMT device for its current model/order. Caller must
  * run on the render task: every RMT channel has to be born on core 1. */
+/* (Re)create one strip's RMT device for its current model, order and length.
+ * Sized to the strip on purpose: the driver transmits its whole buffer on
+ * every refresh, so a 300-pixel device behind a 40-LED bar would cost 9 ms a
+ * frame. Caller must run on the render task (RMT channels are born on core 1). */
 esp_err_t createStrip(const int index)
 {
     Strip& st = m_strips[index];
     if (nullptr != st.handle)
     {
+        /* The LEDs latch whatever they were last sent. Blank them before the
+         * device goes away, so a strip that shrinks, disappears or fails to
+         * come back is dark rather than frozen on its last frame. */
+        led_strip_clear(st.handle);
         led_strip_del(st.handle);
         st.handle = nullptr;
+    }
+    if (0 == st.led_count)
+    {
+        return ESP_OK;      /* not installed: no device, RMT memory released */
     }
 
     st.wide = (LedModel::WS2816 == st.model);
 
     led_strip_config_t strip_cfg = {};
     strip_cfg.strip_gpio_num = st.gpio;
-    strip_cfg.max_leds = m_max_leds;
+    strip_cfg.max_leds = st.led_count;
     strip_cfg.led_model = modelToDriver(st.model);
     strip_cfg.color_component_format = formatFor(st.order, st.wide);
     strip_cfg.flags.invert_out = false;
@@ -179,6 +192,9 @@ esp_err_t init(const int* gpios, const int count, const uint16_t max_leds)
     for (int i = 0; i < m_n_strips; i++)
     {
         m_strips[i].gpio = gpios[i];
+        /* Full length until a config says otherwise: the boot blackout must
+         * reach every LED a strip could possibly have. */
+        m_strips[i].led_count = max_leds;
         m_strips[i].model = LedModel::WS2812;
         m_strips[i].order = ColorOrder::GRB;
     }
@@ -201,22 +217,29 @@ void setReversed(const StripId strip, const bool reversed)
     }
 }
 
-esp_err_t setLedType(const StripId strip, const LedModel model,
-                     const ColorOrder order)
+esp_err_t setLayout(const StripId strip, const LedModel model,
+                    const ColorOrder order, uint16_t led_count)
 {
     if (!validStrip(strip))
     {
         return ESP_ERR_INVALID_ARG;
     }
+    if (led_count > m_max_leds)
+    {
+        led_count = m_max_leds;
+    }
     Strip& st = m_strips[stripIndex(strip)];
-    if (model == st.model && order == st.order && nullptr != st.handle)
+    const bool same = model == st.model && order == st.order &&
+                      led_count == st.led_count;
+    if (same && (nullptr != st.handle || 0 == led_count))
     {
         return ESP_OK;
     }
     st.model = model;
     st.order = order;
-    ESP_LOGI(TAG, "strip %d type: model %d, order %d", stripIndex(strip),
-             static_cast<int>(model), static_cast<int>(order));
+    st.led_count = led_count;
+    ESP_LOGI(TAG, "strip %d: model %d, order %d, %u LEDs", stripIndex(strip),
+             static_cast<int>(model), static_cast<int>(order), led_count);
     return createStrip(stripIndex(strip));
 }
 
@@ -227,9 +250,9 @@ esp_err_t write(const StripId strip, const uint8_t* rgb, uint16_t count)
         return ESP_ERR_INVALID_STATE;
     }
     const Strip& st = m_strips[stripIndex(strip)];
-    if (count > m_max_leds)
+    if (count > st.led_count)
     {
-        count = m_max_leds;
+        count = st.led_count;
     }
 
     for (uint16_t i = 0; i < count; i++)

@@ -21,7 +21,7 @@ BUILTINS = {
     'Map', 'Date', 'parseInt', 'parseFloat', 'isNaN', 'fetch', 'alert',
     'confirm', 'setTimeout', 'setInterval', 'clearTimeout', 'clearInterval',
     'requestAnimationFrame', 'console', 'encodeURIComponent',
-    'XMLHttpRequest', 'FileReader', 'Blob',
+    'XMLHttpRequest', 'FileReader', 'Blob', 'URL',
 }
 KEYWORDS = {
     'if', 'for', 'while', 'switch', 'catch', 'return', 'function', 'typeof',
@@ -59,6 +59,22 @@ def strip_noise(js):
             while i < n and '\n' != js[i]:
                 i += 1
             continue
+        if '/' == c and 'code' == top or '/' == c and 'sub' == top:
+            # a regex literal can only follow an operator or an opener
+            k = len(out) - 1
+            while k >= 0 and out[k] in ' \t\n':
+                k -= 1
+            prev = out[k] if k >= 0 else '('
+            if prev in '(,=:[!&|?;{}' or ''.join(out[-6:]).endswith('return'):
+                i += 1
+                while i < n and '/' != js[i]:
+                    i += 2 if '\\' == js[i] else 1
+                    if i < n and '[' == js[i - 1]:      # a class may hold '/'
+                        while i < n and ']' != js[i]:
+                            i += 1
+                i += 1
+                out.append(' ')
+                continue
         if '/*' == two:
             i = js.find('*/', i + 2)
             i = n if -1 == i else i + 2
@@ -105,16 +121,31 @@ def main(path):
     js = strip_noise(src)
     problems = []
 
-    ids_html = set(re.findall(r'id="([\w-]+)"', html))
-    ids_html |= set(re.findall(r"id=\\?['\"]?([\w-]+)", src))   # built in JS
+    ids_html = set(re.findall(r'(?<![\w-])id="([\w-]+)"', html))
+    ids_html |= set(re.findall(r"(?<![\w-])id=\\?['\"]?([\w-]+)", src))   # built in JS
     # scan the raw script: these lookups live inside string literals
-    for used in sorted(set(re.findall(r"\$\('([\w-]+)'\)", src))):
+    used_ids = set(re.findall(r"""\$\(['"]([\w-]+)['"]\)""", src))
+    used_ids |= set(re.findall(r"""getElementById\(['"]([\w-]+)['"]\)""", src))
+    used_ids |= set(re.findall(r"""querySelector(?:All)?\(['"]#([\w-]+)""", src))
+    for used in sorted(used_ids):
         if used not in ids_html:
-            problems.append("$('%s') has no matching id in the HTML" % used)
+            problems.append("'%s' is looked up but no element has that id" % used)
+    # every nav tab needs its section: showTab() builds "tab-<name>" at runtime
+    for tab in re.findall(r'data-tab="([\w-]+)"', html):
+        if 'tab-' + tab not in ids_html:
+            problems.append('nav tab "%s" has no <section id="tab-%s">' % (tab, tab))
+    # data-* keys written in templates must be the ones the handlers read
+    written = set(re.findall(r'data-([a-z]+)=', src)) | set(re.findall(r'data-([a-z]+)=', html))
+    read = set(re.findall(r'dataset\.([a-zA-Z]+)', src))
+    read |= set(re.findall(r'\[data-([a-z]+)[\]=]', src))
+    for key in sorted(read - written - {'tab'}):
+        problems.append('data-%s is read but never written' % key)
+    for key in sorted(written - read - {'tab', 'bv', 'feed', 'total', 'custom', 'zc'}):
+        problems.append('data-%s is written but never read' % key)
 
     defined = set(re.findall(r'\bfunction\s+([\w$]+)', js))
     defined |= set(re.findall(r'([\w$]+)\s*\([^()]*\)\s*\{', js))   # methods
-    defined |= set(re.findall(r'([\w$]+)\s*[:=]\s*(?:async\s*)?[\w$(]', js))
+    defined |= set(re.findall(r'([\w$]+)\s*(?::|=(?!=))\s*(?:async\s*)?[\w$(]', js))
     for decl in re.findall(r'\b(?:const|let|var)\s+([^;\n]+)', js):
         for part in decl.split(','):
             name = part.split('=')[0].strip()
