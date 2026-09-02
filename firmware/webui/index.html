@@ -89,7 +89,7 @@
     <h2>Colors</h2>
     <p class="muted">A fixed set of semantic colors — the effects use them, you
     tune them. Brightness dims the color itself (safe for layering).</p>
-    <table id="palrows"><thead><tr><th></th><th>Name</th><th>Color</th><th>Brightness</th></tr></thead><tbody></tbody></table>
+    <div class="tablewrap"><table id="palrows"><thead><tr><th></th><th>Name</th><th>Color</th><th>Brightness</th></tr></thead><tbody></tbody></table></div>
   </div>
   <div class="row">
     <button class="btn acc" id="savesetup">Save</button>
@@ -144,10 +144,10 @@
     <h2>Board pinout</h2>
     <p class="muted">Straight from the firmware (main/board_pins.h): what each
     pin of the module is wired to on the PCB.</p>
-    <table id="pintable">
+    <div class="tablewrap"><table id="pintable">
       <thead><tr><th>Signal</th><th style="width:80px">GPIO</th><th>Role</th></tr></thead>
       <tbody></tbody>
-    </table>
+    </table></div>
   </div>
 </section>
 
@@ -155,7 +155,7 @@
   <div class="card">
     <h2>System info <button class="btn" id="sysrefresh"
       style="margin-left:10px;padding:3px 12px">Refresh</button></h2>
-    <table id="systable"><tbody></tbody></table>
+    <div class="tablewrap"><table id="systable"><tbody></tbody></table></div>
     <div class="muted" id="modstatus" style="margin-top:8px">–</div>
   </div>
   <div class="card">

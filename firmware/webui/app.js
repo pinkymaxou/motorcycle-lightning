@@ -7,7 +7,8 @@ const TENC=new TextEncoder(),TDEC=new TextDecoder();
 function pbW(){
   const b=[];
   const w={
-    varint(v){v=Math.floor(v);for(;;){const x=v&0x7f;v=Math.floor(v/128);
+    varint(v){v=Math.floor(Number(v));if(!(v>=0&&v<2**53))v=0;
+      for(;;){const x=v&0x7f;v=Math.floor(v/128);
       if(v){b.push(x|0x80)}else{b.push(x);return}}},
     tag(f,wt){w.varint(f*8+wt)},
     uint(f,v){if(!v)return;w.tag(f,0);w.varint(v)},
@@ -147,7 +148,7 @@ function sectionRanges(st){
 const TURN_LABEL=['—','LEFT','RIGHT'];
 /* short role tag for legends and timeline lanes */
 function sectionTag(sec){
-  if(sec.turn)return TURN_LABEL[sec.turn][0];
+  if(sec.turn&&TURN_LABEL[sec.turn])return TURN_LABEL[sec.turn][0];
   if(sec.brake)return 'B';
   if(sec.idle)return 'P';
   return '·';
@@ -398,7 +399,7 @@ function renderLiveStrips(){
        <canvas class="strip" data-live="${i}" width="900" height="44"></canvas>
        <div class="row muted" style="margin:3px 0 0">
          ${st.sections.map((sec,k)=>
-           `<span>${k+1}: ${sec.led_count} ${TURN_LABEL[sec.turn]==='—'?
+           `<span>${k+1}: ${sec.led_count} ${(TURN_LABEL[sec.turn]||'—')==='—'?
              (sec.brake?'brake':'position'):TURN_LABEL[sec.turn].toLowerCase()+' turn'}`+
            `${sec.reversed?' ◂':''}</span>`).join(' · ')}
        </div>`);
@@ -445,11 +446,19 @@ function wsConnect(){
       }
     });
   };
-  ws.onopen=()=>{$('livestate').textContent='live';};
+  ws.onopen=()=>{
+    $('livestate').textContent='live';
+    if(otaPending)location.reload();   /* the new firmware is up */
+  };
   ws.onclose=()=>{
     $('livestate').textContent='offline';
     $('linkdot').classList.remove('on');
     $('linkinfo').textContent='offline';
+    /* stale is worse than blank on a diagnostics page */
+    lastStatus=null;lastFrame.fill(null);
+    for(const id of ['ri-left','ri-right','ri-brake','ri-aux'])
+      $(id).classList.remove('on','dimphase');
+    $('ri-note').textContent='offline';
     setTimeout(wsConnect,2000);
   };
   ws.onerror=()=>ws.close();
@@ -481,6 +490,7 @@ document.querySelectorAll('[data-sim]').forEach(b=>{
 let overrideOn=false;
 $('overridebtn').onclick=async()=>{
   overrideOn=!overrideOn;
+  $('overridebtn').setAttribute('aria-pressed',overrideOn);
   $('overridebtn').classList.toggle('on',overrideOn);
   try{await CMD(cmdOverride(overrideOn));}
   catch(e){toast('module: '+e,true);}
@@ -645,11 +655,11 @@ function renderSetup(){
       <div class="striplabel">Sections — laid end to end from the connector
         <span class="muted" data-feed="${si}"></span></div>
       <canvas class="strip" data-zc="${si}" width="900" height="30"></canvas>
-      <table><thead><tr>
+      <div class="tablewrap"><table><thead><tr>
         <th style="width:24px">#</th><th style="width:90px">LEDs</th>
         <th style="width:120px">Direction</th><th>Role</th><th></th>
       </tr></thead><tbody>${rows||
-        '<tr><td colspan="5" class="muted">no section yet</td></tr>'}</tbody></table>
+        '<tr><td colspan="5" class="muted">no section yet</td></tr>'}</tbody></table></div>
       <div class="row">
         <button class="btn" data-add="${si}"
           ${st.sections.length>=MAX_SECTIONS?'disabled':''}>＋ section</button>
@@ -730,6 +740,7 @@ function bindSetupHandlers(){
   });
   host.querySelectorAll('[data-del]').forEach(el=>el.onclick=()=>{
     const[si,k]=el.dataset.del.split(':').map(Number);
+    if(!confirm(`Delete section ${k+1} of ${STRIP_LABEL(si)}?`))return;
     cfg.strips[si].sections.splice(k,1);
     renderSetup();
   });
@@ -834,26 +845,48 @@ const colorFromHex=(hex,brightness)=>
   (((parseInt(String(hex).replace('#',''),16)&0xFFFFFF)*256)+
    (brightness&255))>>>0;
 function exportDoc(){
+  const strips=cfg.strips.map(st=>Object.assign({},st,{sections:st.sections.map(sec=>{
+    const s=Object.assign({},sec);delete s.fx_open;return s;})}));
+  const sta=Object.assign({},cfg.sta);delete sta.pass_set;
+  const ap=Object.assign({},cfg.ap);delete ap.pass_set;
   return {motolights:EXPORT_FORMAT,exported:new Date().toISOString(),
     note:'passwords are not exported',
-    config:Object.assign({},cfg,{colors:cfg.colors.map((v,i)=>({
+    config:Object.assign({},cfg,{strips,sta,ap,colors:cfg.colors.map((v,i)=>({
       name:COLOR_NAMES[i],rgb:colorToHex(v>>>0),brightness:(v>>>0)&255}))})};
 }
 /* Merged onto a fresh shape so a file written by an older page (missing a
-   key that has since appeared) still opens. */
+   key that has since appeared) still opens, then pushed through the module's
+   own codec: every scalar comes back as its wire type, unknown keys vanish,
+   and a value the encoder cannot represent is a refusal here rather than a
+   broken page. What the module holds (pass_set) is never taken from a file. */
 function adoptDoc(doc){
-  if(EXPORT_FORMAT!==doc.motolights||!doc.config||!doc.config.strips)
+  if(!doc||'object'!==typeof doc||!doc.config||!Array.isArray(doc.config.strips))
+    throw 'not a MotoLights configuration file';
+  if(EXPORT_FORMAT<doc.motolights)
+    throw 'this file comes from a newer page — update the module first';
+  if(EXPORT_FORMAT!==doc.motolights)
     throw 'not a MotoLights configuration file';
   const base=decodeConfig(new Uint8Array());
+  const keep=cfg||base;
   const c=doc.config;
-  cfg=Object.assign(base,c,{
-    colors:(c.colors||[]).map((v,i)=>'object'===typeof v
-      ?colorFromHex(v.rgb,v.brightness):(v>>>0)||base.colors[i]),
-    sta:Object.assign(base.sta,c.sta||{}),
-    ap:Object.assign(base.ap,c.ap||{}),
-    strips:(c.strips||[]).map(st=>Object.assign(emptyStrip(),st,
+  const merged=Object.assign(base,c,{
+    colors:base.colors.map((_,i)=>{
+      const v=(c.colors||[])[i];
+      if('object'===typeof v&&v)return colorFromHex(v.rgb,v.brightness);
+      return 'number'===typeof v&&v?(v>>>0):(keep.colors[i]>>>0);
+    }),
+    sta:Object.assign({},base.sta,c.sta||{},{pass_set:keep.sta.pass_set}),
+    ap:Object.assign({},base.ap,c.ap||{},{pass_set:keep.ap.pass_set}),
+    strips:c.strips.map(st=>Object.assign(emptyStrip(),st,
       {sections:(st.sections||[]).map(sec=>Object.assign(emptySection(),sec))})),
   });
+  const wire=encodeConfig(merged,'','');
+  const clean=decodeConfig(wire);
+  clean.sta.pass_set=keep.sta.pass_set;
+  clean.ap.pass_set=keep.ap.pass_set;
+  if(clean.strips.some(st=>st.sections.some(sec=>!TURN_LABEL[sec.turn])))
+    throw 'a section has an unknown turn source';
+  cfg=clean;
 }
 $('exportbtn').onclick=()=>{
   const doc=exportDoc();
@@ -868,6 +901,7 @@ $('exportbtn').onclick=()=>{
 };
 $('importbtn').onclick=()=>$('importfile').click();
 $('importfile').onchange=async e=>{
+  e.stopPropagation();   /* the tab's own change listener would mark it dirty */
   const f=e.target.files[0];
   if(!f)return;
   try{
@@ -962,7 +996,8 @@ async function loadSysinfo(){
 $('sysrefresh').onclick=loadSysinfo;
 
 /* ---- firmware update ---- */
-const OTA_REBOOT_MS=8000;
+let otaPending=false;
+const OTA_RELOAD_FALLBACK_MS=30000;
 $('otabtn').onclick=()=>{
   const f=$('otafile').files[0];
   if(!f)return toast('choose a .bin file first',true);
@@ -983,8 +1018,13 @@ $('otabtn').onclick=()=>{
   xhr.onload=()=>{
     if(200!==xhr.status)return done(xhr.responseText||`HTTP ${xhr.status}`,true);
     $('otafill').style.width='100%';
-    done('written — rebooting, this page reloads on its own');
-    setTimeout(()=>location.reload(),OTA_REBOOT_MS);
+    $('otastate').textContent='written — rebooting, this page reloads when the module is back';
+    /* stay disabled: a second upload would hit a rebooting module. Nothing
+       here is unsaved any more, so leaving must not ask. */
+    clearDirty();
+    otaPending=true;
+    setTimeout(()=>{if(otaPending)$('otastate').textContent=
+      'still waiting — reload this page by hand if the module is up';},OTA_RELOAD_FALLBACK_MS);
   };
   xhr.onerror=()=>done('upload failed — the module went away',true);
   $('otabtn').disabled=true;

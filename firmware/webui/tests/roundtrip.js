@@ -42,6 +42,45 @@ cfg = null;
 adoptDoc(JSON.parse(text));
 if (before !== bytes(cfg)) { out.push('FAIL config round trip'); }
 
+/* the module-facing direction: what the page encodes, it decodes back */
+cfg = sample();
+const twice = bytes(decodeConfig(encodeConfig(cfg, '', '')));
+if (twice !== bytes(cfg)) { out.push('FAIL decode(encode(c)) != c'); }
+
+/* nothing that is not configuration goes into the file */
+cfg = sample();
+cfg.strips[0].sections[0].fx_open = true;
+const doc = exportDoc();
+if (JSON.stringify(doc).includes('fx_open')) { out.push('FAIL fx_open exported'); }
+if (JSON.stringify(doc).includes('pass_set')) { out.push('FAIL pass_set exported'); }
+
+/* a hand-edited file with garbage must not freeze or break the page */
+cfg = sample();
+cfg.sta.pass_set = true;
+const bad = JSON.parse(JSON.stringify(exportDoc()));
+bad.config.strips[0].sections[0].led_count = -1;
+bad.config.strips[0].sections[1].turn = '1';
+bad.config.exit_x10 = 1e999;
+bad.config.colors = [{ rgb: '#123456', brightness: 7 }];      /* too short */
+bad.config.sta.pass_set = false;                             /* lies */
+try {
+    adoptDoc(bad);
+    const enc = encodeConfig(cfg, '', '');            /* must terminate */
+    if (!enc.length) { out.push('FAIL bad file encodes to nothing'); }
+    if (1 !== cfg.strips[0].sections[1].turn) { out.push('FAIL string turn not coerced'); }
+    if (cfg.colors[1] !== sample().colors[1]) { out.push('FAIL short colours not kept'); }
+    if (true !== cfg.sta.pass_set) { out.push('FAIL pass_set taken from file'); }
+} catch (e) { out.push('FAIL bad file threw: ' + e); }
+
+/* an unknown turn source is a refusal, not a broken render */
+const worse = JSON.parse(JSON.stringify(exportDoc()));
+worse.config.strips[0].sections[0].turn = 5;
+try { adoptDoc(worse); out.push('FAIL turn 5 accepted'); } catch (e) { /* expected */ }
+
+/* a file from a newer page says so */
+try { adoptDoc({ motolights: 99, config: { strips: [] } }); out.push('FAIL newer accepted'); }
+catch (e) { if (!String(e).includes('newer')) { out.push('FAIL newer message: ' + e); } }
+
 /* and anything else must be refused rather than half-loaded */
 try { adoptDoc({ hello: 1 }); out.push('FAIL junk accepted'); }
 catch (e) { /* expected */ }
