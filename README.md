@@ -103,3 +103,9 @@ sources stay split for editing, the module still serves one request.
 - `firmware/docs/EFFECT_SPEC.md` — normative effect semantics
 - `firmware/components/protocol/proto/ws_protocol.proto` — the wire and storage contract
 - `pcb/` — schematic, layout, EasyEDA project
+
+## License
+
+MIT — see [LICENSE](LICENSE). The nanopb runtime vendored in
+`firmware/components/nanopb/` keeps its own zlib licence
+(`firmware/components/nanopb/LICENSE.txt`).
