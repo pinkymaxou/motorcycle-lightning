@@ -1,8 +1,13 @@
 # Everything that can be checked without the board.
 #
-# The container tag must track the ESP-IDF used on the bench (see README):
-# a firmware that builds here but not locally is worse than no CI at all.
+# The container is the released ESP-IDF tag the bench should be on too (see
+# README): a firmware that builds here but not locally is worse than no CI.
 name: build
+
+# A superseded push has nothing left to prove.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 # Push only, every branch. Adding pull_request on top ran the whole thing
 # twice for the same commit (both events fire for a branch in this repo), and
@@ -15,7 +20,7 @@ jobs:
   firmware:
     name: firmware + host tests
     runs-on: ubuntu-latest
-    container: espressif/idf:release-v6.1
+    container: espressif/idf:v6.1
     steps:
       - uses: actions/checkout@v4
 
@@ -28,18 +33,14 @@ jobs:
           set -eux
           apt-get update
           apt-get install -y --no-install-recommends g++ protobuf-compiler
-          # same packages the project's README asks a developer to install
-          apt-get install -y --no-install-recommends nanopb || true
-          if ! command -v protoc-gen-nanopb; then
-              # The generator must match the runtime vendored in
-              # firmware/components/nanopb — keep this pin in step with it.
-              PY="${IDF_PYTHON_ENV_PATH:-}/bin/python"
-              [ -x "$PY" ] || PY="$(command -v python3)"
-              "$PY" -m pip install "nanopb==0.4.9.1"
-              # console scripts land next to that interpreter
-              dirname "$PY" >> "$GITHUB_PATH"
-              PATH="$(dirname "$PY"):$PATH"
-          fi
+          # The generator must match the nanopb runtime vendored in
+          # firmware/components/nanopb, so it is always this pinned pip
+          # package — never whatever apt happens to ship.
+          PY="${IDF_PYTHON_ENV_PATH:-}/bin/python"
+          [ -x "$PY" ] || PY="$(command -v python3)"
+          "$PY" -m pip install "nanopb==0.4.9.1"
+          dirname "$PY" >> "$GITHUB_PATH"
+          PATH="$(dirname "$PY"):$PATH"
           protoc --version
           command -v protoc-gen-nanopb
 
@@ -51,24 +52,10 @@ jobs:
       - name: Config page — ids and symbols
         run: python3 firmware/tools/check_webui.py firmware/webui
 
-      # The gzipped page is committed, so it can go stale. Compare what the
-      # sources inline to what the asset holds — not the gzip bytes, which
-      # differ between gzip versions.
+      # The gzipped page is committed, so it can go stale. The same script
+      # that builds it checks it, by content rather than gzip bytes.
       - name: Config page — asset matches sources
-        run: |
-          python3 - <<'PY'
-          import gzip, pathlib, subprocess, sys
-          d = pathlib.Path('firmware/webui')
-          html = (d / 'index.html').read_text()
-          for tag, name, fmt in (
-                  ('<link rel="stylesheet" href="style.css">', 'style.css', '<style>\n%s</style>'),
-                  ('<script src="app.js"></script>', 'app.js', '<script>\n%s</script>')):
-              html = html.replace(tag, fmt % (d / name).read_text())
-          asset = gzip.open('firmware/components/net_services/webui_dist/index.html.gz').read().decode()
-          if html != asset:
-              sys.exit('webui_dist/index.html.gz is stale — run firmware/tools/build_webui.sh')
-          print('asset matches sources')
-          PY
+        run: firmware/tools/build_webui.sh --check
 
       - name: Build firmware
         shell: bash
@@ -87,6 +74,7 @@ jobs:
             firmware/build/bootloader/bootloader.bin
             firmware/build/partition_table/partition-table.bin
           if-no-files-found: error
+          retention-days: 30
 
   page:
     name: page runtime + user manual
@@ -140,3 +128,4 @@ jobs:
           name: user-manual
           path: user_manual.html
           if-no-files-found: error
+          retention-days: 30
