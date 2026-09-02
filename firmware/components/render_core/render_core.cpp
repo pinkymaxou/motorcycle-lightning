@@ -217,7 +217,7 @@ void renderTask(void* arg)
 {
     (void)arg;
 
-    esp_task_wdt_add(nullptr);
+    ESP_ERROR_CHECK(esp_task_wdt_add(nullptr));
 
 
     Bundle* cur = nullptr;              /* nullptr = using the static fallback */

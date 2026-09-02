@@ -24,6 +24,9 @@ esp_err_t staticFilesRegister(httpd_handle_t server);
 /* POST /api/ota — streams a firmware image into the inactive slot and
  * reboots into it (ota_update.cpp). */
 esp_err_t otaPost(httpd_req_t* req);
+/* True once an image has been written and the reboot timer is running: no
+ * further write may touch the slot or the config. */
+bool otaRebootPending();
 
 esp_err_t wsStreamStart(httpd_handle_t server);
 void wsStreamStop();

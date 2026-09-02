@@ -202,16 +202,30 @@ extern "C" void app_main()
     StatusLed::init(PIN_STATUS_LED);
     StatusLed::set(StatusLed::State::Boot);
 
-    /* 4. config (any failure -> compiled defaults, never halt) */
+    /* 4. config (any failure -> compiled defaults, never halt). A module
+     *    with nothing stored yet — fresh, or just factory-reset — is not a
+     *    module whose config was rejected: it runs the defaults without the
+     *    purple LED. */
     bool cfg_fallback = false;
-    if (ESP_OK != ConfigStore::init() || ESP_OK != ConfigStore::load(&m_cfg))
+    bool cfg_absent = false;
+    esp_err_t cfg_err = ConfigStore::init();
+    if (ESP_OK == cfg_err)
+    {
+        cfg_err = ConfigStore::load(&m_cfg);
+    }
+    if (ESP_OK != cfg_err)
     {
         ConfigStore::defaults(&m_cfg);
-        cfg_fallback = true;
-        ESP_LOGW(TAG, "using compiled default config");
+        cfg_absent = (ESP_ERR_NVS_NOT_FOUND == cfg_err);
+        cfg_fallback = !cfg_absent;
+        ESP_LOGW(TAG, "using compiled default config (%s)",
+                 cfg_absent ? "nothing stored" : esp_err_to_name(cfg_err));
     }
-    /* seed the STA settings from the optional compiled-in credentials */
-    if ('\0' == m_cfg.sta_ssid[0] && '\0' != WIFI_STA_SSID[0])
+    /* Seed the STA settings from the optional compiled-in credentials — only
+     * into a module that has no config at all. Seeding whenever the SSID is
+     * empty would write the developer's network back over a rider who
+     * deliberately cleared it. */
+    if (cfg_absent && '\0' != WIFI_STA_SSID[0])
     {
         strlcpy(m_cfg.sta_ssid, WIFI_STA_SSID, sizeof(m_cfg.sta_ssid));
         strlcpy(m_cfg.sta_pass, WIFI_STA_PASS, sizeof(m_cfg.sta_pass));
@@ -231,8 +245,16 @@ extern "C" void app_main()
         static_cast<uint32_t>(m_cfg.brake_holdoff_s) * 1000);
     ESP_ERROR_CHECK(RenderCore::start());
 
-    /* 6. configured effect set (per-effect fallback inside) */
-    RenderCore::applyConfig(m_cfg);
+    /* 6. configured effect set (per-effect fallback inside). If it cannot be
+     *    built, the strip keeps the hard-fallback set — say so on the LED
+     *    rather than showing a green "all is well" over the wrong geometry. */
+    const esp_err_t applied = RenderCore::applyConfig(m_cfg);
+    if (ESP_OK != applied)
+    {
+        ESP_LOGE(TAG, "applyConfig failed: %s — running the fallback set",
+                 esp_err_to_name(applied));
+        cfg_fallback = true;
+    }
 
     /* 7. network stays OFF at boot — riding needs no radio. The module
      *    button brings the config WiFi up on demand. */

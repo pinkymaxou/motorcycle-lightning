@@ -145,6 +145,43 @@ esp_err_t hConfigGet(httpd_req_t* req)
     return sendPb(req, m_config_buf, len);
 }
 
+/* Everything a new *m_cfg needs to become real: the render set, the input
+ * conditioner's parameters, the STA link, and the flash. One path for a PUT
+ * and for restore-defaults, so neither can forget a step — and an honest
+ * answer: a config that did not take, or did not persist, is not a 200. */
+esp_err_t applyAndPersist(httpd_req_t* const req, const bool sta_changed)
+{
+    const esp_err_t applied = RenderCore::applyConfig(*m_cfg);
+    if (ESP_OK != applied)
+    {
+        ESP_LOGE(TAG, "applyConfig: %s — strip keeps the previous set",
+                 esp_err_to_name(applied));
+        return sendError(req, "500 Internal Server Error",
+                         "could not apply the configuration (out of memory?)");
+    }
+    InputConditioner::setBrakeHoldoff(
+        static_cast<uint32_t>(m_cfg->brake_holdoff_s) * 1000);
+    InputConditioner::setExitFactor(m_cfg->blink_exit_x10);
+    if (sta_changed && nullptr != m_sta_apply_timer)
+    {
+        esp_timer_stop(m_sta_apply_timer);
+        esp_timer_start_once(m_sta_apply_timer, STA_APPLY_DELAY_US);
+    }
+
+    const esp_err_t saved = ConfigStore::save(m_cfg);
+    if (ESP_OK != saved)
+    {
+        ESP_LOGE(TAG, "config NVS save: %s (applied live only)",
+                 esp_err_to_name(saved));
+        return sendError(req, "500 Internal Server Error",
+                         "applied, but could not be saved to flash");
+    }
+    /* Stored config is valid again: drop any boot-time fallback indication.
+     * Serving this request means the config WiFi is up. */
+    StatusLed::set(StatusLed::State::RunningWifi);
+    return sendOk(req);
+}
+
 esp_err_t hConfigPut(httpd_req_t* req)
 {
     const size_t len = readBody(req, m_body_buf, sizeof(m_body_buf));
@@ -208,32 +245,17 @@ esp_err_t hConfigPut(httpd_req_t* req)
         return sendError(req, "400 Bad Request", "unknown effect id");
     }
 
+    if (otaRebootPending())
+    {
+        return sendError(req, "503 Service Unavailable", "rebooting into new firmware");
+    }
     const bool sta_changed =
         0 != std::strcmp(tmp.sta_ssid, m_cfg->sta_ssid) ||
         0 != std::strcmp(tmp.sta_pass, m_cfg->sta_pass) ||
         tmp.sta_active != m_cfg->sta_active;
 
     *m_cfg = tmp;
-    if (ESP_OK == ConfigStore::save(m_cfg))
-    {
-        /* Stored config is valid again: drop any boot-time fallback
-         * indication. Serving this request means the config WiFi is up. */
-        StatusLed::set(StatusLed::State::RunningWifi);
-    }
-    else
-    {
-        ESP_LOGW(TAG, "config NVS save failed (still applied live)");
-    }
-    RenderCore::applyConfig(*m_cfg);
-    InputConditioner::setBrakeHoldoff(
-        static_cast<uint32_t>(m_cfg->brake_holdoff_s) * 1000);
-    InputConditioner::setExitFactor(m_cfg->blink_exit_x10);
-    if (sta_changed && nullptr != m_sta_apply_timer)
-    {
-        esp_timer_stop(m_sta_apply_timer);
-        esp_timer_start_once(m_sta_apply_timer, STA_APPLY_DELAY_US);
-    }
-    return sendOk(req);
+    return applyAndPersist(req, sta_changed);
 }
 
 esp_err_t hEffectsGet(httpd_req_t* req)
@@ -374,11 +396,20 @@ esp_err_t hCommandPost(httpd_req_t* req)
         RenderCore::setOverride(cmd.cmd.override);
         break;
     case motolights_Command_restore_defaults_tag:
+    {
+        if (!cmd.cmd.restore_defaults)
+        {
+            break;              /* presence alone is not a request */
+        }
+        if (otaRebootPending())
+        {
+            return sendError(req, "503 Service Unavailable",
+                             "rebooting into new firmware");
+        }
+        const bool sta_was_set = '\0' != m_cfg->sta_ssid[0] || m_cfg->sta_active;
         ConfigStore::defaults(m_cfg);
-        ConfigStore::save(m_cfg);
-        RenderCore::applyConfig(*m_cfg);
-        StatusLed::set(StatusLed::State::RunningWifi);
-        break;
+        return applyAndPersist(req, sta_was_set);
+    }
     default:
         return sendError(req, "400 Bad Request", "empty command");
     }

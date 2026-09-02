@@ -21,6 +21,7 @@ CONFIG_LWIP_MAX_SOCKETS=10
 # module, not just log: frozen lights are worse than dark ones, and the boot
 # sequence latches the strips black before anything else runs.
 CONFIG_ESP_TASK_WDT_EN=y
+CONFIG_ESP_TASK_WDT_INIT=y
 CONFIG_ESP_TASK_WDT_TIMEOUT_S=5
 CONFIG_ESP_TASK_WDT_PANIC=y
 # The panic handler itself must not live in flash. We write to flash (config,

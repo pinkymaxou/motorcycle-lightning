@@ -30,6 +30,7 @@ constexpr uint64_t REBOOT_DELAY_US = 800 * 1000;
 
 static uint8_t m_chunk[OTA_CHUNK_BYTES];
 static esp_timer_handle_t m_reboot_timer;
+static bool m_reboot_pending;
 
 esp_err_t sendText(httpd_req_t* const req, const char* const status,
                    const char* const msg)
@@ -46,6 +47,7 @@ void rebootCb(void*)
 
 void scheduleReboot()
 {
+    m_reboot_pending = true;
     if (nullptr == m_reboot_timer)
     {
         const esp_timer_create_args_t args = { rebootCb, nullptr,
@@ -103,8 +105,20 @@ bool imageIsForThisProject(const uint8_t* const buf, const size_t len,
 
 } // namespace
 
+bool otaRebootPending()
+{
+    return m_reboot_pending;
+}
+
 esp_err_t otaPost(httpd_req_t* const req)
 {
+    if (m_reboot_pending)
+    {
+        /* A second upload queued behind the first would erase the slot the
+         * module is about to boot from, and the reboot would cut it short:
+         * the bootloader would fall back and the update would be lost. */
+        return sendText(req, "503 Service Unavailable", "already rebooting");
+    }
     const esp_partition_t* const target = esp_ota_get_next_update_partition(nullptr);
     if (nullptr == target)
     {
