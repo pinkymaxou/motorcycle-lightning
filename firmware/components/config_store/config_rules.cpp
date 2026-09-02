@@ -148,6 +148,31 @@ bool validate(const SysConfig* cfg)
     {
         return false;
     }
+    if (std::strlen(cfg->ap_pass) > CFG_PASS_MAX ||
+        std::strlen(cfg->sta_pass) > CFG_PASS_MAX)
+    {
+        return false;
+    }
+    /* A section that follows a turn signal must have something to show for
+     * it — its own turn effects, or the shared hazard ones. Otherwise the
+     * arbiter drops that section's brake layer while the signal blinks and
+     * paints nothing in its place: brake red to idle and back, indicating
+     * nothing. */
+    const bool hazard_set = '\0' != cfg->fx_hazard_on[0] ||
+                            '\0' != cfg->fx_hazard_off[0];
+    for (int i = 0; i < STRIP_COUNT; i++)
+    {
+        const StripConfig& sc = cfg->strips[i];
+        for (int k = 0; k < sc.n_sections; k++)
+        {
+            const SectionConfig& sec = sc.sections[k];
+            if (TurnSource::None != sec.turn && !hazard_set &&
+                '\0' == sec.fx_turn_on[0] && '\0' == sec.fx_turn_off[0])
+            {
+                return false;
+            }
+        }
+    }
     for (int i = 0; i < STRIP_COUNT; i++)
     {
         if (!stripValid(cfg->strips[i]))

@@ -19,6 +19,15 @@ esp_err_t wifiReconfigureSta(const char* ssid, const char* pass, bool active);
 esp_err_t httpStart(SysConfig* live_cfg);
 esp_err_t httpStop();
 
+/* Browsers send a cross-site POST without asking when its Content-Type is a
+ * "simple" one (text/plain, form data). Requiring ours — which are not —
+ * forces a preflight, and there is no OPTIONS handler, so a hostile page in
+ * the owner's browser cannot force signals, restore defaults or flash
+ * firmware. Every body-carrying handler checks before reading a byte. */
+constexpr const char* BODY_TYPE_PROTOBUF = "application/x-protobuf";
+constexpr const char* BODY_TYPE_OCTETS = "application/octet-stream";
+bool bodyTypeIs(httpd_req_t* req, const char* type);
+
 esp_err_t staticFilesRegister(httpd_handle_t server);
 
 /* POST /api/ota — streams a firmware image into the inactive slot and

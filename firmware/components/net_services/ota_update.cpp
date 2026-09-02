@@ -112,6 +112,11 @@ bool otaRebootPending()
 
 esp_err_t otaPost(httpd_req_t* const req)
 {
+    if (!bodyTypeIs(req, BODY_TYPE_OCTETS))
+    {
+        return sendText(req, "415 Unsupported Media Type",
+                        "expected application/octet-stream");
+    }
     if (m_reboot_pending)
     {
         /* A second upload queued behind the first would erase the slot the

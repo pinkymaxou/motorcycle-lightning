@@ -81,6 +81,15 @@ esp_err_t applyStaConfig(const char* ssid, const char* pass)
 
 } // namespace
 
+/* A start that dies after esp_wifi_init() must undo it: the next attempt's
+ * esp_wifi_init() would otherwise answer ESP_ERR_INVALID_STATE, and every
+ * button press from then on would give the orange LED until a power cycle. */
+esp_err_t failStart(const esp_err_t err)
+{
+    esp_wifi_deinit();
+    return err;
+}
+
 esp_err_t wifiStart(const char* ap_ssid, const char* ap_pass,
                     const char* sta_ssid, const char* sta_pass,
                     const bool sta_active)
@@ -142,26 +151,26 @@ esp_err_t wifiStart(const char* ap_ssid, const char* ap_pass,
     err = esp_wifi_set_mode(m_sta_enabled ? WIFI_MODE_APSTA : WIFI_MODE_AP);
     if (ESP_OK != err)
     {
-        return err;
+        return failStart(err);
     }
     err = esp_wifi_set_config(WIFI_IF_AP, &ap_cfg);
     if (ESP_OK != err)
     {
-        return err;
+        return failStart(err);
     }
     if (m_sta_enabled)
     {
         err = applyStaConfig(sta_ssid, sta_pass);
         if (ESP_OK != err)
         {
-            return err;
+            return failStart(err);
         }
     }
 
     err = esp_wifi_start();
     if (ESP_OK != err)
     {
-        return err;
+        return failStart(err);
     }
 
     /* Powered by the bike's battery: latency beats microamps. Modem

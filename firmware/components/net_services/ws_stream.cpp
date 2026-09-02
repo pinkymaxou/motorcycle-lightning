@@ -32,10 +32,10 @@ constexpr int WS_MAX_CLIENTS = 4;
 constexpr uint64_t PUSH_PERIOD_US = 33 * 1000;  /* ~30 FPS */
 constexpr int STATUS_EVERY_N = 2;               /* status every ~66 ms: crisp
                                                    edges on the debug timeline */
-/* Each async send copies its frame on the heap; a stalled client would grow
- * that queue without bound. Below this floor, skip pushes (the strip and the
- * REST API keep working) until the sockets drain. */
-constexpr uint32_t PUSH_HEAP_FLOOR_BYTES = 40 * 1024;
+/* httpd_ws_send_frame_async() is, despite its name, a blocking send() on the
+ * httpd task under the server's send timeout — nothing is queued on the heap.
+ * A client that stops reading costs one timeout per frame and is then
+ * dropped; the timeout is kept short in http_api.cpp for exactly that. */
 /* RFC 6455: control frames carry at most 125 bytes of payload. */
 constexpr size_t WS_CONTROL_FRAME_MAX = 125;
 /* Frame payload plus protobuf framing. */
@@ -106,7 +106,13 @@ void sendAll(uint8_t* payload, const size_t len)
         {
             clientRemove(fd);
             httpd_sess_trigger_close(m_server, fd);
+            continue;
         }
+        /* The LRU purge counts requests *received* on a socket, and a
+         * WebSocket only ever sends — so it was always the first session
+         * evicted when a browser opened its sixth keep-alive connection.
+         * Every push is activity. */
+        httpd_sess_update_lru_counter(m_server, fd);
     }
 }
 
@@ -232,10 +238,6 @@ void timerCb(void* arg)
     if (nullptr == m_server || 0 == m_n_clients.load())
     {
         return;
-    }
-    if (esp_get_free_heap_size() < PUSH_HEAP_FLOOR_BYTES)
-    {
-        return;   /* let the send queues drain before pushing more */
     }
     if (m_work_pending.exchange(true))
     {

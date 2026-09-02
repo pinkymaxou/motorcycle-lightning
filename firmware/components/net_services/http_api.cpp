@@ -57,7 +57,8 @@ constexpr size_t ARRAY_LEN(T (&)[N])
 
 constexpr size_t CONFIG_BUF_BYTES = motolights_Config_size;
 constexpr size_t EFFECTS_BUF_BYTES = 768;
-constexpr size_t SYSINFO_BUF_BYTES = 1024;
+constexpr int HTTPD_SEND_TIMEOUT_S = 1;
+constexpr size_t SYSINFO_BUF_BYTES = motolights_SysInfo_size;
 
 static httpd_handle_t m_server;
 static SysConfig* m_cfg;      /* application's live config */
@@ -104,6 +105,21 @@ esp_err_t sendOk(httpd_req_t* req)
 }
 
 /* Read the full request body into buf. Returns received length or 0. */
+} // namespace
+
+bool bodyTypeIs(httpd_req_t* const req, const char* const type)
+{
+    char got[48];
+    if (ESP_OK != httpd_req_get_hdr_value_str(req, "Content-Type", got, sizeof(got)))
+    {
+        return false;
+    }
+    return 0 == std::strcmp(got, type);
+}
+
+namespace
+{
+
 size_t readBody(httpd_req_t* req, uint8_t* buf, const size_t cap)
 {
     if (0 == req->content_len || req->content_len > cap)
@@ -184,6 +200,10 @@ esp_err_t applyAndPersist(httpd_req_t* const req, const bool sta_changed)
 
 esp_err_t hConfigPut(httpd_req_t* req)
 {
+    if (!bodyTypeIs(req, BODY_TYPE_PROTOBUF))
+    {
+        return sendError(req, "415 Unsupported Media Type", "expected application/x-protobuf");
+    }
     const size_t len = readBody(req, m_body_buf, sizeof(m_body_buf));
     if (0 == len)
     {
@@ -220,7 +240,8 @@ esp_err_t hConfigPut(httpd_req_t* req)
     if (!ConfigStore::validate(&tmp))
     {
         return sendError(req, "400 Bad Request",
-                         "invalid config (max 8 sections and 300 LEDs per strip)");
+                         "invalid config: 8 sections and 300 LEDs per strip at most, "
+                         "passwords 8-63 characters, a turn source needs a turn effect");
     }
     for (int i = 0; i < STRIP_COUNT; i++)
     {
@@ -366,6 +387,10 @@ esp_err_t hSysinfoGet(httpd_req_t* req)
 
 esp_err_t hCommandPost(httpd_req_t* req)
 {
+    if (!bodyTypeIs(req, BODY_TYPE_PROTOBUF))
+    {
+        return sendError(req, "415 Unsupported Media Type", "expected application/x-protobuf");
+    }
     uint8_t body[128];
     const size_t len = readBody(req, body, sizeof(body));
     if (0 == len)
@@ -469,6 +494,10 @@ esp_err_t httpStart(SysConfig* live_cfg)
     cfg.task_priority = Tasks::HTTPD.priority;
     cfg.max_uri_handlers = HTTPD_MAX_URI_HANDLERS;
     cfg.lru_purge_enable = true;
+    /* WebSocket pushes go through the same blocking send(): a client that has
+     * stopped reading (phone screen off) must not hold the single httpd task
+     * for the default 5 s per frame. */
+    cfg.send_wait_timeout = HTTPD_SEND_TIMEOUT_S;
     cfg.close_fn = onSockClose;
 
     esp_err_t err = httpd_start(&m_server, &cfg);

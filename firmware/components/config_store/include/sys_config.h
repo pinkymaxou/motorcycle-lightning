@@ -11,6 +11,10 @@ constexpr int CFG_PASS_LEN = 65;
 /* WPA2 refuses anything shorter; the AP would simply fail to start, which
  * would lock the config page away. */
 constexpr int CFG_AP_PASS_MIN = 8;
+/* The WiFi driver's password field is 64 bytes including its terminator: a
+ * 64-character key would be silently cut to 63, and an access point would
+ * then start with a password nobody typed. */
+constexpr int CFG_PASS_MAX = 63;
 
 /* The PCB's two independent WS2812B outputs (see main/board_pins.h). */
 enum class StripId : uint8_t

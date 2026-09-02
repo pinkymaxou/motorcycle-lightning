@@ -142,6 +142,23 @@ void testGarbageIsRejected()
     std::strcpy(bad.ap_pass, "longenough");
     CHECK(ConfigStore::validate(&bad));
 
+    /* 64 characters would be cut to 63 by the WiFi driver */
+    ConfigStore::defaults(&bad);
+    std::memset(bad.sta_pass, 'p', 64);
+    bad.sta_pass[64] = '\0';
+    CHECK(!ConfigStore::validate(&bad));
+    bad.sta_pass[63] = '\0';
+    CHECK(ConfigStore::validate(&bad));
+
+    /* a turn source with nothing to show: the brake would vanish while the
+       signal blinks and nothing would replace it */
+    ConfigStore::defaults(&bad);
+    bad.strips[0].sections[0].fx_turn_on[0] = '\0';
+    bad.strips[0].sections[0].fx_turn_off[0] = '\0';
+    CHECK(!ConfigStore::validate(&bad));
+    std::strcpy(bad.fx_hazard_on, "f_turn_on");   /* hazard gives it something */
+    CHECK(ConfigStore::validate(&bad));
+
     ConfigStore::defaults(&bad);
     std::memset(bad.strips[0].sections[0].fx_idle, 'x',
                 sizeof(bad.strips[0].sections[0].fx_idle));
