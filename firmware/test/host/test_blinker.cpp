@@ -131,6 +131,27 @@ void testRelearnFastFlash()
     (void)now;
 }
 
+/* A flasher slower than the estimate x exit factor drops out of blink mode
+ * before its next ON edge; it must still be measured, or the module never
+ * recovers from a wrong stored period (factory default on a slow bike, or a
+ * hyperflash learned before the bulb was replaced). */
+void testRelearnSlowFlash()
+{
+    Blink::BlinkSystem s;
+    Blink::init(&s, 750, 12);          /* factory: 750 ms, +20 % grace */
+    s.period_dirty = false;
+    uint32_t now = 1000;
+    /* legal 60 flashes/min: 1000 ms period, beyond 750 x 1.2 = 900 */
+    now = pulseLeft(&s, now, 6, 500, 500);
+    CHECK(s.period_ms > 950 && s.period_ms < 1050);
+    CHECK(s.period_dirty);
+    /* once learned, the channel rides through the off phase in blink mode */
+    now = runMs(&s, now, 500, true, false, false, false);
+    now = runMs(&s, now, 450, false, false, false, false);
+    CHECK(s.left.blink_mode);
+    (void)now;
+}
+
 void testSmallJitterNoRepersist()
 {
     Blink::BlinkSystem s;
@@ -201,6 +222,7 @@ int main()
     testNeverExitWhileOn();
     testStoredPeriodUsed();
     testRelearnFastFlash();
+    testRelearnSlowFlash();
     testSmallJitterNoRepersist();
     testHazardBothChannels();
     testBrakeIntroHoldoff();
