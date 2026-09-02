@@ -35,12 +35,12 @@ jobs:
           apt-get install -y --no-install-recommends g++ protobuf-compiler
           # The generator must match the nanopb runtime vendored in
           # firmware/components/nanopb, so it is always this pinned pip
-          # package — never whatever apt happens to ship.
-          PY="${IDF_PYTHON_ENV_PATH:-}/bin/python"
-          [ -x "$PY" ] || PY="$(command -v python3)"
-          "$PY" -m pip install "nanopb==0.4.9.1"
-          dirname "$PY" >> "$GITHUB_PATH"
-          PATH="$(dirname "$PY"):$PATH"
+          # package — never whatever apt happens to ship. It goes into the
+          # ESP-IDF python env (export.sh puts it on PATH; the system python
+          # is externally managed and refuses pip installs).
+          . "$IDF_PATH/export.sh"
+          python -m pip install "nanopb==0.4.9.1"
+          dirname "$(command -v python)" >> "$GITHUB_PATH"
           protoc --version
           command -v protoc-gen-nanopb
 
