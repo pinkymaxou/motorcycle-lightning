@@ -18,4 +18,4 @@ direct_dependencies:
 - idf
 manifest_hash: 71b45eecc953f0a4c6a428fcb1fc5b82be1b1f4825e5a4952ed7145e1e807017
 target: esp32
-version: 2.0.0
+version: 3.0.0

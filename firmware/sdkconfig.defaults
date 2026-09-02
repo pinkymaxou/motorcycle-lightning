@@ -9,7 +9,11 @@ CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
 
 CONFIG_COMPILER_OPTIMIZATION_PERF=y
 
-# HTTP server: roomy headers for browsers, WebSocket push for the live view
+# HTTP server: roomy headers for browsers, WebSocket push for the live view.
+# Since ESP-IDF v6.1 the URI handler is no longer invoked for the WebSocket
+# handshake request; clients are registered from the post-handshake callback,
+# which this option compiles in.
+CONFIG_HTTPD_WS_POST_HANDSHAKE_CB_SUPPORT=y
 CONFIG_HTTPD_MAX_REQ_HDR_LEN=2048
 CONFIG_HTTPD_MAX_URI_LEN=128
 CONFIG_HTTPD_WS_SUPPORT=y

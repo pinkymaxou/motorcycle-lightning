@@ -251,11 +251,20 @@ void timerCb(void* arg)
 
 /* ---- /ws endpoint ---- */
 
+/* Where a client is registered. ESP-IDF v6.1 stopped invoking the URI handler
+ * for the handshake request itself and calls this instead; the GET branch in
+ * wsHandler() below is kept for the older behaviour, and clientAdd() ignores
+ * a socket it already knows, so either path — or both — registers once. */
+esp_err_t wsPostHandshake(httpd_req_t* req)
+{
+    clientAdd(httpd_req_to_sockfd(req));
+    return ESP_OK;
+}
+
 esp_err_t wsHandler(httpd_req_t* req)
 {
     if (HTTP_GET == req->method)
     {
-        /* handshake done by httpd — register the socket */
         clientAdd(httpd_req_to_sockfd(req));
         return ESP_OK;
     }
@@ -300,6 +309,7 @@ esp_err_t wsStreamStart(httpd_handle_t server)
     ws_uri.method = HTTP_GET;
     ws_uri.handler = wsHandler;
     ws_uri.is_websocket = true;
+    ws_uri.ws_post_handshake_cb = wsPostHandshake;
     esp_err_t err = httpd_register_uri_handler(server, &ws_uri);
     if (ESP_OK != err)
     {
