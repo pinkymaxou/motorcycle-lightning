@@ -388,6 +388,54 @@ void testLayerBudget()
 }
 
 /* Factory effects build natively (no JSON) and resolve palette colors. */
+/* The scanner has to sweep and come back, and its glow must fade by alpha
+ * alone — mixing towards transparent black would darken the tail twice, once
+ * in the mix and again in the compositor's source-over. */
+void testKnightRider()
+{
+    Fx::FxPalette pal;
+    for (int i = 0; i < Fx::COLOR_COUNT; i++)
+    {
+        pal.colors[i] = Fx::defaultColor(static_cast<Fx::FxColor>(i));
+    }
+    FxEffect fx;
+    CHECK(Fx::factoryBuild("f_knight", pal, &fx));
+    CHECK(2 == fx.n_steps && 0 == fx.loop_from);
+    CHECK(Fx::Prim::Scan == fx.steps[0].prim);
+    /* same colour at both ends of the mix, only the alpha differs */
+    CHECK(fx.steps[0].c1a.r == fx.steps[0].c2a.r);
+    CHECK(255 == fx.steps[0].c1a.a && 0 == fx.steps[0].c2a.a);
+
+    constexpr int LEDS = 40;
+    Fx::RgbaColor out[LEDS];
+    const uint32_t half = fx.step_end_ms[0];
+
+    Fx::evaluate(&fx, 0, LEDS, false, out);
+    CHECK(out[0].a > 200 && out[LEDS - 1].a < 40);          /* eye at the left */
+
+    Fx::evaluate(&fx, half / 2, LEDS, false, out);
+    CHECK(out[LEDS / 2].a > 200);                            /* crossing the middle */
+    CHECK(out[0].a < 40 && out[LEDS - 1].a < 40);
+
+    Fx::evaluate(&fx, half - 1, LEDS, false, out);
+    CHECK(out[LEDS - 1].a > 200 && out[0].a < 40);           /* far end */
+
+    Fx::evaluate(&fx, 2 * half - 1, LEDS, false, out);
+    CHECK(out[0].a > 200 && out[LEDS - 1].a < 40);           /* and back */
+
+    /* the tail is a gradient, not a hard edge */
+    Fx::evaluate(&fx, half / 2, LEDS, false, out);
+    int partial = 0;
+    for (int i = 0; i < LEDS; i++)
+    {
+        if (out[i].a > 20 && out[i].a < 235)
+        {
+            partial++;
+        }
+    }
+    CHECK(partial >= 4);
+}
+
 void testFactoryBuild()
 {
     Fx::FxPalette pal;
@@ -422,6 +470,7 @@ int main()
     testSectionDirection();
     testTurnTimeScale();
     testLayerBudget();
+    testKnightRider();
     testFactoryBuild();
 
     if (0 != g_fail)
