@@ -53,6 +53,8 @@ source ~/esp/esp-idf-6.1/export.sh
 idf.py set-target esp32
 idf.py build
 idf.py -p /dev/ttyUSB0 flash monitor   # via the 6-pin PROG header
+                                       # console is 921600 baud (monitor
+                                       # picks that up from sdkconfig)
 ```
 
 PROG header wiring to a 3.3V USB-serial adapter: 3V3, GND, adapter TX→G3,

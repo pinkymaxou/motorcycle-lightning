@@ -4,6 +4,29 @@ CONFIG_IDF_TARGET="esp32"
 CONFIG_FREERTOS_HZ=1000
 
 CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+
+# Boot time is time spent dark, so the strip is late every time the bike is
+# switched on. Measured on the bench, reset to lit: 801 ms -> 200 ms.
+#
+# Quad I/O at 80 MHz (the PICO-D4's embedded flash does support it) reads the
+# image four times faster than the 40 MHz DIO default.
+CONFIG_ESPTOOLPY_FLASHFREQ_80M=y
+CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
+# The bootloader's own log is a bench tool; every line it prints is time the
+# LEDs are off. Warnings and errors still come through.
+CONFIG_BOOTLOADER_LOG_LEVEL_WARN=y
+# The console is synchronous: ~30 boot lines at 115200 cost ~160 ms of pure
+# UART time. At 921600 they cost a fifth of that and nothing is lost — but a
+# serial terminal must be set to this rate (idf.py monitor reads it here).
+CONFIG_ESP_CONSOLE_UART_CUSTOM=y
+CONFIG_ESP_CONSOLE_UART_TX_GPIO=1
+CONFIG_ESP_CONSOLE_UART_RX_GPIO=3
+CONFIG_ESP_CONSOLE_UART_BAUDRATE=921600
+# Verifying the image's SHA256 costs ~280 ms. Skip it on a power-on reset —
+# the bike's ignition, where the image has been running for weeks — and keep
+# it on every software reset, which is what a fresh OTA and a crash reboot
+# are. A new image is therefore never booted unverified.
+CONFIG_BOOTLOADER_SKIP_VALIDATE_ON_POWER_ON=y
 CONFIG_PARTITION_TABLE_CUSTOM=y
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
 

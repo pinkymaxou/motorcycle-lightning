@@ -293,7 +293,7 @@ the module — and it comes back dark rather than frozen on half a frame.
 | Firmware update refused | the file is not a MotoLights image, or it is not an ESP32 application at all — the message says which |
 | The module came back on the old firmware after an update | the new image failed its first boot and the module rolled itself back |
 
-A serial console is available at 115200 baud with a few commands: `wifi`,
+A serial console is available at 921600 baud with a few commands: `wifi`,
 `wifi on`, `wifi off`, `crashlog`, `crashlog clear`, `reboot`.
 
 ---
