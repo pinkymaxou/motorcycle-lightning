@@ -26,6 +26,12 @@ CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
 # The bootloader's own log is a bench tool; every line it prints is time the
 # LEDs are off. Warnings and errors still come through.
 CONFIG_BOOTLOADER_LOG_LEVEL_WARN=y
+# ESP-IDF prints ~20 lines of start-up detail before app_main runs, and the
+# console is synchronous: that is 20 ms of dark strip. They are compiled in
+# but silenced by default; app_main's first statement raises everything back
+# to INFO, so the firmware's own logging is unchanged.
+CONFIG_LOG_DEFAULT_LEVEL_WARN=y
+CONFIG_LOG_MAXIMUM_LEVEL_INFO=y
 # The console is synchronous: ~30 boot lines at 115200 cost ~160 ms of pure
 # UART time. At 921600 they cost a fifth of that and nothing is lost — but a
 # serial terminal must be set to this rate (idf.py monitor reads it here).
