@@ -13,19 +13,29 @@ namespace
 struct ColorRef
 {
     bool      from_palette;
+    bool      fade;         /* palette colour, alpha 0 (see palFade) */
     FxColor   palette_id;
     RgbaColor literal;
 };
 
 constexpr ColorRef pal(const FxColor id)
 {
-    return ColorRef{ true, id, RgbaColor{ 0, 0, 0, 0 } };
+    return ColorRef{ true, false, id, RgbaColor{ 0, 0, 0, 0 } };
+}
+
+/* The same palette colour at alpha 0. Mixing a colour towards *transparent
+ * black* would scale its RGB and its alpha at once, and the compositor scales
+ * by alpha again — a glow would fall off twice as fast and read muddy.
+ * Fading towards the same colour keeps RGB flat and ramps alpha alone. */
+constexpr ColorRef palFade(const FxColor id)
+{
+    return ColorRef{ true, true, id, RgbaColor{ 0, 0, 0, 0 } };
 }
 
 constexpr ColorRef lit(const uint8_t r, const uint8_t g, const uint8_t b,
                        const uint8_t a = 255)
 {
-    return ColorRef{ false, FxColor::Position, RgbaColor{ r, g, b, a } };
+    return ColorRef{ false, false, FxColor::Position, RgbaColor{ r, g, b, a } };
 }
 
 constexpr ColorRef TRANSPARENT_REF = lit(0, 0, 0, 0);
@@ -71,6 +81,24 @@ constexpr StepDef TURN_SWEEP_STEP = {
     { 0.0f, 0.10f, 0.0f, 0.0f }, { 1.1f, 0.10f, 0.0f, 0.0f },
 };
 
+/* Knight Rider: one eye sweeping the section and back, trailing a glow.
+ * InOutSine is what makes it read as a scanner rather than a metronome — the
+ * eye slows at each end the way the original prop did. The uncovered part is
+ * transparent, so whatever the section paints below (its position light, or
+ * nothing) shows through and the glow fades into it. */
+constexpr StepDef KNIGHT_STEP(const float from, const float to)
+{
+    return StepDef{
+        Prim::Scan, Ease::InOutSine, 0, 700,
+        pal(FxColor::Brake), pal(FxColor::Brake),
+        palFade(FxColor::Brake), palFade(FxColor::Brake),
+        /* pos, width, soft. The scan primitive is full brightness only
+         * within (width/2 - soft) of the centre, so the eye needs a width
+         * comfortably wider than twice its falloff or it never lights up. */
+        { from, 0.26f, 0.09f, 0.0f }, { to, 0.26f, 0.09f, 0.0f },
+    };
+}
+
 const EffectDef FACTORY[] = {
     { "f_position", "Position light", 0, 1, { fill(1000, pal(FxColor::Position)) } },
 
@@ -98,6 +126,9 @@ const EffectDef FACTORY[] = {
 
     { "f_white", "Full white", 0, 1, { fill(1000, pal(FxColor::White)) } },
 
+    { "f_knight", "Knight Rider", 0, 2,
+      { KNIGHT_STEP(0.0f, 1.0f), KNIGHT_STEP(1.0f, 0.0f) } },
+
     /* Opaque black: the section goes DARK ("none" shows the layers below). */
     { EFFECT_ID_OFF, "Off (dark)", 0, 1, { fill(1000, lit(0, 0, 0)) } },
 };
@@ -118,7 +149,7 @@ RgbaColor resolve(const ColorRef& ref, const FxPalette& palette)
     out.r = static_cast<uint8_t>((c.r * c.a + 127) / 255);
     out.g = static_cast<uint8_t>((c.g * c.a + 127) / 255);
     out.b = static_cast<uint8_t>((c.b * c.a + 127) / 255);
-    out.a = 255;
+    out.a = ref.fade ? 0 : 255;
     return out;
 }
 

@@ -117,6 +117,11 @@ For each section:
 - **Custom…** — opens the selectors: *Turn source*, then one effect each
   for *Idle / position*, *Brake*, *Turn ON*, *Turn off phase* and *Aux*
 
+An effect always plays inside **its own section**, so *Knight Rider* assigned
+to three sections gives three eyes, each sweeping its own run — and one in a
+*Reverse* section sweeps the other way. For a single eye running the length of
+the bar, give the strip one section that covers it.
+
 Any event can be set to **— none —**, which means "paint nothing here" — the
 layers below stay visible. That is not the same as the *Off (dark)* effect,
 which actively paints the section black. Both are honoured on the brake: a
@@ -140,6 +145,7 @@ apart.
 | Turn ON sweep | the turn colour sweeps across the section |
 | Turn off-phase (low red) | what a blinking section shows between flashes |
 | Full white | steady white |
+| Knight Rider | a red eye sweeping the section and back, trailing a glow |
 | Off (dark) | paints black |
 
 ### Strip hardware
