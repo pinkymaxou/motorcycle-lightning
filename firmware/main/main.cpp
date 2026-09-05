@@ -34,6 +34,14 @@ const char* const TAG = "main";
 
 constexpr uint32_t HOUSEKEEPING_PERIOD_MS = 250;
 
+/* Brake held with the hazards on, seen in the first seconds after boot,
+ * brings the config WiFi up — a way in when the module's button sits behind
+ * a top box. Deliberately a combination the bike cannot produce on its own,
+ * and deliberately only just after a boot: it costs nothing while riding,
+ * because by then the window has long closed. */
+constexpr uint32_t WIFI_COMBO_WINDOW_MS = 6000;
+constexpr uint32_t WIFI_COMBO_TICKS = WIFI_COMBO_WINDOW_MS / HOUSEKEEPING_PERIOD_MS;
+
 static SysConfig m_cfg;   /* authoritative live config (mutated by httpd) */
 
 enum class NetRequest : uint8_t
@@ -325,9 +333,23 @@ extern "C" void app_main()
 
     /* Housekeeping: persist the learned flasher period outside the timer and
      * render contexts (NVS writes block). */
-    for (;;)
+    bool combo_fired = false;
+    for (uint32_t tick = 0;; tick++)
     {
         vTaskDelay(pdMS_TO_TICKS(HOUSEKEEPING_PERIOD_MS));
+
+        if (!combo_fired && !m_cfg.wifi_combo_off && tick < WIFI_COMBO_TICKS)
+        {
+            CondState in;
+            InputConditioner::get(&in);
+            /* Blink mode, not the ON phase: it holds across the flasher's
+             * dark half, so a 250 ms poll cannot miss the hazards. */
+            if (in.brake && in.left_blink && in.right_blink)
+            {
+                combo_fired = true;
+                applyNetRequest(NetRequest::On, "brake+hazard");
+            }
+        }
         if (m_factory_request.exchange(false))
         {
             factoryReset();

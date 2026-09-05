@@ -111,6 +111,7 @@ size_t encode(const SysConfig& cfg, uint8_t* const out, const size_t cap,
 
     strlcpy(m_msg.hazard_on, cfg.fx_hazard_on, sizeof(m_msg.hazard_on));
     strlcpy(m_msg.hazard_off, cfg.fx_hazard_off, sizeof(m_msg.hazard_off));
+    m_msg.wifi_combo_off = cfg.wifi_combo_off;
     m_msg.blink_exit_x10 = cfg.blink_exit_x10;
     m_msg.brake_holdoff_s = cfg.brake_holdoff_s;
 
@@ -165,6 +166,7 @@ bool decode(const uint8_t* const data, const size_t len, SysConfig* const cfg)
     }
     strlcpy(cfg->fx_hazard_on, m_msg.hazard_on, sizeof(cfg->fx_hazard_on));
     strlcpy(cfg->fx_hazard_off, m_msg.hazard_off, sizeof(cfg->fx_hazard_off));
+    cfg->wifi_combo_off = m_msg.wifi_combo_off;
     cfg->blink_exit_x10 = static_cast<uint8_t>(m_msg.blink_exit_x10);
     cfg->brake_holdoff_s = static_cast<uint16_t>(m_msg.brake_holdoff_s);
     strlcpy(cfg->sta_ssid, m_msg.sta.ssid, sizeof(cfg->sta_ssid));

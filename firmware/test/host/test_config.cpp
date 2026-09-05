@@ -47,6 +47,7 @@ void testRoundTripKeepsEverything()
     std::strcpy(in.fx_hazard_on, "f_turn_on");
     in.blink_exit_x10 = 15;
     in.brake_holdoff_s = 30;
+    in.wifi_combo_off = true;
     std::strcpy(in.ap_ssid, "MyMoto");
     std::strcpy(in.ap_pass, "longenoughpass");
     std::strcpy(in.sta_ssid, "some-network");
@@ -77,6 +78,7 @@ void testRoundTripKeepsEverything()
     CHECK(30 == out.brake_holdoff_s);
     CHECK(0 == std::strcmp("some-network", out.sta_ssid));
     CHECK(0 == std::strcmp("MyMoto", out.ap_ssid));
+    CHECK(out.wifi_combo_off);
     CHECK(0 == std::strcmp("longenoughpass", out.ap_pass));
     CHECK(out.sta_active);
     CHECK(1 == out.palette.colors[0].r && 4 == out.palette.colors[0].a);
@@ -94,6 +96,27 @@ void testRoundTripKeepsEverything()
 
 /* A config written by a build that knew more fields than this one must still
  * load — that is the whole reason the blob is protobuf and not a struct. */
+/* The brake+hazard shortcut is on unless a config says otherwise, and proto3
+ * omits a false — so a message that never mentions it must come back enabled.
+ * That is what lets an older stored config keep the feature. */
+void testWifiComboDefaultsToOn()
+{
+    SysConfig in;
+    ConfigStore::defaults(&in);
+    CHECK(!in.wifi_combo_off);
+
+    uint8_t buf[BUF_BYTES];
+    const size_t len = ConfigStore::encode(in, buf, sizeof(buf),
+                                           ConfigStore::Secrets::Include);
+    SysConfig out;
+    CHECK(ConfigStore::decode(buf, len, &out));
+    CHECK(!out.wifi_combo_off);
+
+    /* an empty message stands in for a config written before the field */
+    CHECK(ConfigStore::decode(buf, 0, &out));
+    CHECK(!out.wifi_combo_off);
+}
+
 void testUnknownFieldsAreIgnored()
 {
     SysConfig in;
@@ -171,6 +194,7 @@ int main()
 {
     testDefaultsAreValid();
     testRoundTripKeepsEverything();
+    testWifiComboDefaultsToOn();
     testUnknownFieldsAreIgnored();
     testGarbageIsRejected();
 

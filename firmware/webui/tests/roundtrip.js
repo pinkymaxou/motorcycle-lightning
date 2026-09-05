@@ -24,6 +24,7 @@ function sample() {
     c.holdoff_s = 25;
     c.sta = { ssid: 'home', active: true, pass_set: true };
     c.ap = { ssid: 'MotoMax', pass_set: true };
+    c.wifi_combo = false;
     return c;
 }
 
@@ -71,6 +72,14 @@ try {
     if (cfg.colors[1] !== sample().colors[1]) { out.push('FAIL short colours not kept'); }
     if (true !== cfg.sta.pass_set) { out.push('FAIL pass_set taken from file'); }
 } catch (e) { out.push('FAIL bad file threw: ' + e); }
+
+/* the brake+hazard option is inverted on the wire; both states must survive */
+for (const on of [true, false]) {
+    cfg = sample();
+    cfg.wifi_combo = on;
+    const back = decodeConfig(encodeConfig(cfg, '', ''));
+    if (back.wifi_combo !== on) { out.push('FAIL wifi_combo ' + on); }
+}
 
 /* an unknown turn source is a refusal, not a broken render */
 const worse = JSON.parse(JSON.stringify(exportDoc()));

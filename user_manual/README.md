@@ -58,6 +58,11 @@ the module button once to bring it up; press again to shut it down.
 2. Join the WiFi network **MotoLights** from your phone or laptop.
 3. Open **http://192.168.4.1**.
 
+**Button out of reach?** Switch the ignition on, then hold the brake with the
+hazards running. Done within six seconds of power-up, that brings the WiFi up
+just like the button. After those six seconds the shortcut is inert, so it
+cannot fire while you ride. It can be switched off in the WiFi tab.
+
 If you gave the module your home network in the **WiFi** tab, it also joins
 that network when the config WiFi is up, and the page is reachable at the
 address shown in the System tab. The SoftAP always stays available either way, so you can
@@ -214,6 +219,10 @@ Optional, and only there to make the page easier to reach from a laptop:
 enter your network's SSID and password and the module joins it whenever the
 config WiFi is up. The SoftAP stays available at the same time, so a wrong
 password here can never lock you out.
+
+**Brake + hazard turns the WiFi on** is the shortcut described above, on by
+default. Uncheck it if you would rather the module only ever answer its
+button.
 
 The password is write-only — the field shows *(unchanged)* and leaving it
 blank keeps the one already stored. **STA active** is what decides whether

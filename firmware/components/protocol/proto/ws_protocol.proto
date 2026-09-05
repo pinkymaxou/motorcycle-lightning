@@ -117,6 +117,9 @@ message Config {
   string hazard_off       = 7;
   StaConfig sta           = 5;
   ApConfig  ap            = 8;
+  // Inverted on purpose: proto3 omits a false, so a config that predates
+  // this field reads as "not disabled" — the shortcut is on by default.
+  bool wifi_combo_off     = 9;
 }
 
 message EffectInfo {

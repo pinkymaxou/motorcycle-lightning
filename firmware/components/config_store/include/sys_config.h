@@ -150,6 +150,13 @@ struct SysConfig
     char sta_pass[CFG_PASS_LEN];
     bool sta_active;
 
+    /* Brake + hazard within the first seconds of a boot brings the config
+     * WiFi up, for a module whose button is behind a top box. Stored
+     * inverted because proto3 omits a false: a config written before this
+     * field existed therefore reads as "not disabled", which is the default
+     * this shortcut wants. */
+    bool wifi_combo_off;
+
     /* The module's own access point. An empty SSID means the compiled-in
      * pair, so a module that was never configured still has a way in. */
     char ap_ssid[CFG_SSID_LEN];

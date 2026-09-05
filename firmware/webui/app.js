@@ -86,7 +86,7 @@ function decodeStrip(u8){
 }
 function decodeConfig(u8){
   const c={strips:[],colors:[0,0,0,0],exit_x10:12,holdoff_s:0,
-    hazard_on:'',hazard_off:'',
+    hazard_on:'',hazard_off:'',wifi_combo:true,
     sta:{ssid:'',active:false,pass_set:false},
     ap:{ssid:'',pass_set:false}};
   pbScan(u8,(f,v,s)=>{
@@ -104,6 +104,8 @@ function decodeConfig(u8){
     case 8:pbScan(s,(ff,vv,ss)=>{
       if(ff===1)c.ap.ssid=TDEC.decode(ss);
       else if(ff===3)c.ap.pass_set=!!vv;});break;
+    /* the wire carries the disabled flag; the page shows the feature */
+    case 9:c.wifi_combo=!v;break;
     }
   });
   while(c.strips.length<STRIP_COUNT)c.strips.push(emptyStrip());
@@ -136,6 +138,7 @@ function encodeConfig(c,staPass,apPass){
   const a=pbW();
   a.str(1,c.ap.ssid);a.str(2,apPass||'');
   w.bytesAlways(8,Array.from(a.out()));
+  w.bool(9,!c.wifi_combo);   /* omitted when enabled: absent means on */
   return w.out();
 }
 
@@ -519,6 +522,7 @@ async function loadIndex(){
   if(cfg)renderShared();
 }
 function renderWifi(){
+  $('wificombo').checked=cfg.wifi_combo;
   $('apssid').value=cfg.ap.ssid;
   $('appass').value='';
   $('apnote').textContent=cfg.ap.pass_set?'password saved'
@@ -818,6 +822,7 @@ async function saveConfig(){
   cfg.sta.ssid=$('stassid').value.trim();
   cfg.sta.active=$('staactive').checked;
   cfg.ap.ssid=$('apssid').value.trim();
+  cfg.wifi_combo=$('wificombo').checked;
   const pass=$('stapass').value;     /* empty = keep current */
   const appass=$('appass').value;    /* same rule; the module checks it */
   try{
