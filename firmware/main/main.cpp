@@ -176,6 +176,11 @@ constexpr NetServices::PinDef PINOUT[] = {
 
 extern "C" void app_main()
 {
+    /* ESP-IDF's own start-up chatter is compiled in but silenced by default
+     * (CONFIG_LOG_DEFAULT_LEVEL_WARN): ~20 lines written synchronously to the
+     * UART before we get here, which is time the strips are unlit. Everything
+     * from this point on logs at INFO as before. */
+    esp_log_level_set("*", ESP_LOG_INFO);
     /* 1. Strips dark, before anything else can fail. A reset leaves the LEDs
      *    holding their last latched frame as long as 5 V is present, so the
      *    very first thing the firmware does is latch black: if the boot dies

@@ -55,7 +55,7 @@ prompt:
 Regenerate the user manual before merging this branch into master.
 
 1. Build and flash the branch to the bench module, then bring the config
-   WiFi up ("wifi on" on the serial console) and note its IP.
+   WiFi up ("wifi on" on the serial console, 921600 baud) and note its IP.
 2. Put the module in a representative state: a strip with a few sections
    covering left turn, brake and right turn, and — for the Simulate shot
    only — override on with a turn signal running, so the screenshot shows

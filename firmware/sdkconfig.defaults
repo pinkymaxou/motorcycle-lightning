@@ -3,11 +3,58 @@ CONFIG_IDF_TARGET="esp32"
 # 1 kHz tick so vTaskDelayUntil(13ms) is precise for the ~75 FPS render loop
 CONFIG_FREERTOS_HZ=1000
 
+# 240 MHz rather than 160: it shortens every phase of the boot and every
+# frame afterwards. It costs some current, which this module can afford —
+# the strips draw far more than the CPU ever will.
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
+# The flash on this module is a GigaDevice part; the XMC power-up workaround
+# in the bootloader is dead weight here. RTC calibration is only needed for
+# sleep timing, which this firmware never does.
+CONFIG_BOOTLOADER_FLASH_XMC_SUPPORT=n
+CONFIG_ESP32_RTC_CLK_CAL_CYCLES=256
+
 CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+
+# Boot time is time spent dark, so the strip is late every time the bike is
+# switched on. Measured on the bench, reset to the end of the boot sequence,
+# median of five runs: 648 ms -> 101 ms.
+#
+# Quad I/O at 80 MHz (the PICO-D4's embedded flash does support it) reads the
+# image four times faster than the 40 MHz DIO default.
+CONFIG_ESPTOOLPY_FLASHFREQ_80M=y
+CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
+# The bootloader's own log is a bench tool; every line it prints is time the
+# LEDs are off. Warnings and errors still come through.
+CONFIG_BOOTLOADER_LOG_LEVEL_WARN=y
+# ESP-IDF prints ~20 lines of start-up detail before app_main runs, and the
+# console is synchronous: that is 20 ms of dark strip. They are compiled in
+# but silenced by default; app_main's first statement raises everything back
+# to INFO, so the firmware's own logging is unchanged.
+CONFIG_LOG_DEFAULT_LEVEL_WARN=y
+CONFIG_LOG_MAXIMUM_LEVEL_INFO=y
+# The console is synchronous: ~30 boot lines at 115200 cost ~160 ms of pure
+# UART time. At 921600 they cost a fifth of that and nothing is lost — but a
+# serial terminal must be set to this rate (idf.py monitor reads it here).
+CONFIG_ESP_CONSOLE_UART_CUSTOM=y
+CONFIG_ESP_CONSOLE_UART_TX_GPIO=1
+CONFIG_ESP_CONSOLE_UART_RX_GPIO=3
+CONFIG_ESP_CONSOLE_UART_BAUDRATE=921600
+# Verifying the image's SHA256 on every boot costs ~280 ms, and the checks
+# that matter happen elsewhere: esp_ota_end() verifies a freshly uploaded
+# image before it can ever be selected, and an image that boots but fails to
+# mark itself valid is rolled back by the bootloader — verified on the bench
+# with a deliberately broken image, which crashed and came back on the
+# previous slot. What is given up is catching flash rot in a slot that has
+# been running for months; that shows up as a crash, which is logged and
+# rolled back, and a dark strip is the outcome this firmware wants anyway.
+CONFIG_BOOTLOADER_SKIP_VALIDATE_ALWAYS=y
 CONFIG_PARTITION_TABLE_CUSTOM=y
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
 
 CONFIG_COMPILER_OPTIMIZATION_PERF=y
+# Release build: no runtime assertions. 58 KB smaller and a little quicker on
+# every path. ESP_ERROR_CHECK and the watchdog still catch what matters.
+CONFIG_COMPILER_OPTIMIZATION_ASSERTIONS_DISABLE=y
 
 # HTTP server: roomy headers for browsers, WebSocket push for the live view.
 # Since ESP-IDF v6.1 the URI handler is no longer invoked for the WebSocket
