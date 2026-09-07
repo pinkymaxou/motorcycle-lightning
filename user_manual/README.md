@@ -243,6 +243,40 @@ resets it did not ask for (a crash or a watchdog reboot) in flash. Losing
 power is not a crash and is never counted, so anything other than *no
 unexpected reset* here is worth reporting.
 
+### Ride counters
+
+Below that, a tally of what the bike has asked of the module. It survives
+losing power, so it adds up across every ride.
+
+| Row | What it counts |
+|---|---|
+| Brake | one per brake press |
+| Left turn / Right turn | one **use** each time that indicator was switched on, and the flashes it ran |
+| Hazards | one use each time the hazards ran, and their flashes |
+| Aux | one per AUX switch-on |
+| Powered | how long the module has had power, all rides together |
+| Config WiFi on | how much of that time the page was reachable |
+| Power-ups | how many times the ignition has brought it up |
+
+A **use** is one switch-on, counted once the signal has stopped. A **flash** is
+one on/off cycle. Hazards count only as hazards: switching the hazards on
+while you were already signalling left makes the whole episode a hazard, and
+nothing is added to the left count. Signals you inject yourself from the
+Simulate tab are counted too — they are, after all, things the module did.
+
+**Reset counters** puts every one of them back to zero.
+
+The counters are written down every 15 seconds, into two areas of flash used
+in turn, so cutting the ignition part way through a write costs at most those
+15 seconds and can never leave a wrong number behind. Roughly every quarter
+hour the module tidies that storage, which holds the strip's picture still for
+a fraction of a second. It waits for a moment when nothing is being
+signalled, so it never happens while you are braking or indicating.
+
+If the row block says the counters are **not being saved**, the module is
+still counting but only since this power-up. The usual reason is a firmware
+update done over WiFi, which cannot add the storage area — see below.
+
 ---
 
 ## 8. Updating the firmware
@@ -265,6 +299,11 @@ The strips may glitch or sit still while the flash is being written; that is
 expected, and the module reboots dark either way. Note that the config WiFi is
 off again after the reboot, as after any restart — press the button to get the
 page back.
+
+An update over WiFi replaces the firmware and nothing else. It cannot change
+how the flash is divided up, so a module that has never been programmed with a
+cable since the ride counters were added will say they are **not being saved**.
+One update over the cable fixes that for good and keeps everything else.
 
 ---
 
@@ -305,11 +344,14 @@ the module — and it comes back dark rather than frozen on half a frame.
 | Animation runs the wrong way | flip the section's **Direction**, or the strip's **reversed data direction** if the whole bar is mirrored |
 | Blinking out of step with the bike | let it blink a few times so the period gets learned; the Simulate tab shows the learned value next to the real inputs |
 | `Unexpected resets` is not zero | the module crashed or was rebooted by its watchdog — note the reason and report it |
+| Ride counters say `not being saved` | the firmware was last updated over WiFi; flash it once with a cable |
+| Ride counters lost the last few seconds after a power cut | expected — they are written every 15 s, and losing the last one is the price of never storing a wrong number |
 | Firmware update refused | the file is not a MotoLights image, or it is not an ESP32 application at all — the message says which |
 | The module came back on the old firmware after an update | the new image failed its first boot and the module rolled itself back |
 
 A serial console is available at 921600 baud with a few commands: `wifi`,
-`wifi on`, `wifi off`, `crashlog`, `crashlog clear`, `reboot`.
+`wifi on`, `wifi off`, `crashlog`, `crashlog clear`, `stats`, `stats reset`,
+`reboot`.
 
 ---
 
