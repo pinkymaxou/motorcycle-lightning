@@ -20,9 +20,9 @@ esp_err_t init(const InputPins& pins, uint32_t stored_period_ms,
 
 void get(CondState* out);
 
-/* A consistent snapshot of what the bike has asked for since boot. The stats
- * module takes deltas against what it last saw, so a flush neither
- * double-counts nor drops anything. */
+/* What the bike has asked for since boot. Every tally only grows and the
+ * stats module takes deltas per tally, so nothing is double-counted or
+ * dropped even if the words straddle a sampler tick. */
 void eventCounts(Blink::EventCounts* out);
 
 /* True once when a newly learned period should be persisted; clears the flag

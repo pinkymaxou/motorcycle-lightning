@@ -2,6 +2,7 @@
 #include "blinker.h"
 
 #include <atomic>
+#include <cstring>
 #include "driver/gpio.h"
 #include "esp_timer.h"
 
@@ -21,11 +22,11 @@ constexpr uint32_t F_AUX = 1u << 5;
 constexpr uint32_t F_LEARNED = 1u << 6;
 constexpr uint32_t F_BRAKE_INTRO = 1u << 7;
 
-/* Simulated signals: injected as raw inputs (see forceEvent). */
 constexpr size_t COUNT_WORDS = sizeof(Blink::EventCounts) / sizeof(uint32_t);
-static_assert(0 == sizeof(Blink::EventCounts) % sizeof(uint32_t),
+static_assert(sizeof(Blink::EventCounts) == COUNT_WORDS * sizeof(uint32_t),
               "EventCounts must be a packed run of 32-bit words");
 
+/* Simulated signals: injected as raw inputs (see forceEvent). */
 constexpr uint32_t FORCE_TTL_MS = 60000;
 constexpr uint32_t OVERRIDE_TTL_MS = 60000;
 
@@ -37,8 +38,9 @@ static std::atomic<uint32_t> m_flags;
 static std::atomic<uint32_t> m_left_phase, m_right_phase, m_brake_edge, m_aux_edge;
 static std::atomic<uint32_t> m_left_blink_start, m_right_blink_start;
 static std::atomic<uint32_t> m_period;
-/* Event tallies, published in the same release as m_flags so a reader that
- * acquires the flags sees a consistent set. */
+/* Event tallies. Each is independently monotonic and read as a delta, so a
+ * reader may see words from two neighbouring ticks without losing or
+ * double-counting anything. */
 static std::atomic<uint32_t> m_counts[COUNT_WORDS];
 static std::atomic<uint32_t> m_dirty_period;     /* 0 = clean, else value to persist */
 static std::atomic<uint32_t> m_brake_holdoff{ Blink::BRAKE_HOLDOFF_MS };
@@ -135,7 +137,8 @@ void sampleCb(void* arg)
     m_brake_edge.store(m_sys.brake.last_phase_edge_ms, std::memory_order_relaxed);
     m_aux_edge.store(m_sys.aux.last_phase_edge_ms, std::memory_order_relaxed);
     m_period.store(m_sys.period_ms, std::memory_order_relaxed);
-    const uint32_t* counts = reinterpret_cast<const uint32_t*>(&m_sys.counts);
+    uint32_t counts[COUNT_WORDS];
+    std::memcpy(counts, &m_sys.counts, sizeof(counts));
     for (size_t i = 0; i < COUNT_WORDS; i++)
     {
         m_counts[i].store(counts[i], std::memory_order_relaxed);
@@ -240,13 +243,12 @@ void get(CondState* out)
 
 void eventCounts(Blink::EventCounts* out)
 {
-    /* The flags are the release the counts were published behind. */
-    (void)m_flags.load(std::memory_order_acquire);
-    uint32_t* words = reinterpret_cast<uint32_t*>(out);
+    uint32_t words[COUNT_WORDS];
     for (size_t i = 0; i < COUNT_WORDS; i++)
     {
         words[i] = m_counts[i].load(std::memory_order_relaxed);
     }
+    std::memcpy(out, words, sizeof(words));
 }
 
 bool takeDirtyPeriod(uint32_t* period_ms)

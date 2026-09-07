@@ -1013,8 +1013,10 @@ async function loadSysinfo(){
       '<tr><td colspan="3" class="muted">no pin information</td></tr>';
   }catch(e){toast('sysinfo: '+e,true);}
 }
-/* 15 s per tick is the cadence the counters are written at. */
-function fmtTicks(t){return fmtUptime((t||0)*15);}
+/* The module keeps its time counters in ticks of this many seconds — the
+ * cadence it writes them at. Mirrors StatsRecord::TICK_SECONDS. */
+const STATS_TICK_S=15;
+function fmtTicks(t){return fmtUptime((t||0)*STATS_TICK_S);}
 
 function renderStats(st){
   const body=document.querySelector('#statstable tbody');
@@ -1033,10 +1035,10 @@ function renderStats(st){
   body.innerHTML=rows.map(r=>
     `<tr><td class="muted" style="width:150px">${r[0]}</td>`+
     `<td>${esc(String(r[1]??0))}</td></tr>`).join('');
-  $('statsnote').textContent=st.not_stored
-    ?'Not being saved — '+(st.why||'unknown reason')+
-     '. The counts above are since this power-up only.'
-    :(st.anomalies?st.anomalies+' record(s) rejected as implausible.':'');
+  const note=[];
+  if(st.not_stored)note.push('Not being saved — '+(st.why||'unknown reason')+'.');
+  if(st.anomalies)note.push(st.anomalies+' stored record(s) were rejected as implausible and skipped.');
+  $('statsnote').textContent=note.join(' ');
 }
 
 $('statsreset').onclick=async()=>{
