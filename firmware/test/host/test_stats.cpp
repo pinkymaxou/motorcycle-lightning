@@ -256,8 +256,9 @@ void testEmptyThenFillsAndRollsOver()
     Flash f;
     flashErase(&f);
     StatsStore::Store s;
-    CHECK(StatsStore::open(&s, opsFor(&f)));
+    StatsStore::open(&s, opsFor(&f));
     CHECK(s.persisting);
+    CHECK(0 == s.counters.anomalies);
 
     Counters c = {};
     /* Exactly fills the first sector, then rolls into the other. */
@@ -284,7 +285,7 @@ void testEmptyThenFillsAndRollsOver()
 
     /* Reopening lands on the newer generation with every count intact. */
     StatsStore::Store again;
-    CHECK(StatsStore::open(&again, opsFor(&f)));
+    StatsStore::open(&again, opsFor(&f));
     CHECK(again.counters.brake == c.brake);
     CHECK(again.counters.powered_15s == c.powered_15s);
     CHECK(again.generation == s.generation);
@@ -295,7 +296,7 @@ void testTornRecordCostsOneIntervalAtMost()
     Flash f;
     flashErase(&f);
     StatsStore::Store s;
-    CHECK(StatsStore::open(&s, opsFor(&f)));
+    StatsStore::open(&s, opsFor(&f));
 
     Counters c = {};
     for (int i = 0; i < 10; i++)
@@ -313,7 +314,7 @@ void testTornRecordCostsOneIntervalAtMost()
 
     f.dead = false;   /* the ignition comes back on */
     StatsStore::Store after;
-    CHECK(StatsStore::open(&after, opsFor(&f)));
+    StatsStore::open(&after, opsFor(&f));
     CHECK(after.persisting);
     CHECK(after.counters.brake == survived.brake);
     CHECK(after.counters.powered_15s == survived.powered_15s);
@@ -335,7 +336,7 @@ void testTornEraseNeverTouchesTheLiveSector()
     Flash f;
     flashErase(&f);
     StatsStore::Store s;
-    CHECK(StatsStore::open(&s, opsFor(&f)));
+    StatsStore::open(&s, opsFor(&f));
 
     Counters c = {};
     for (int i = 0; i < RECORDS_PER_SECTOR; i++)
@@ -360,7 +361,7 @@ void testTornEraseNeverTouchesTheLiveSector()
 
     f.dead = false;
     StatsStore::Store after;
-    CHECK(StatsStore::open(&after, opsFor(&f)));
+    StatsStore::open(&after, opsFor(&f));
     CHECK(after.persisting);
     CHECK(after.sector == live_sector);
     CHECK(after.generation == live_generation);
@@ -386,7 +387,7 @@ void testTornAtTheRollOverCommitPoint()
     Flash f;
     flashErase(&f);
     StatsStore::Store s;
-    CHECK(StatsStore::open(&s, opsFor(&f)));
+    StatsStore::open(&s, opsFor(&f));
 
     Counters c = {};
     for (int i = 0; i < RECORDS_PER_SECTOR; i++)
@@ -408,7 +409,7 @@ void testTornAtTheRollOverCommitPoint()
 
     f.dead = false;
     StatsStore::Store after;
-    CHECK(StatsStore::open(&after, opsFor(&f)));
+    StatsStore::open(&after, opsFor(&f));
     CHECK(after.persisting);
     CHECK(after.sector != live_sector);          /* the new generation is current */
     CHECK(after.counters.brake == survived.brake);  /* but the data came from the old one */
@@ -424,7 +425,7 @@ void testHigherGenerationWinsOverAStaleSector()
     Flash f;
     flashErase(&f);
     StatsStore::Store s;
-    CHECK(StatsStore::open(&s, opsFor(&f)));
+    StatsStore::open(&s, opsFor(&f));
 
     Counters c = {};
     for (int i = 0; i < RECORDS_PER_SECTOR + 5; i++)
@@ -435,7 +436,7 @@ void testHigherGenerationWinsOverAStaleSector()
     /* Both sectors now carry valid headers and records; the newer generation
      * has fewer records but must still win. */
     StatsStore::Store after;
-    CHECK(StatsStore::open(&after, opsFor(&f)));
+    StatsStore::open(&after, opsFor(&f));
     CHECK(after.counters.brake == c.brake);
     CHECK(after.generation == s.generation);
 }
@@ -445,7 +446,7 @@ void testResetCannotResurrect()
     Flash f;
     flashErase(&f);
     StatsStore::Store s;
-    CHECK(StatsStore::open(&s, opsFor(&f)));
+    StatsStore::open(&s, opsFor(&f));
 
     Counters c = {};
     for (int i = 0; i < 20; i++)
@@ -453,12 +454,11 @@ void testResetCannotResurrect()
         c = advance(c);
         CHECK(flush(&s, c));
     }
-    CHECK(4102 != c.brake);
 
     /* A reset that completes, then the ignition is killed straight away. */
     CHECK(StatsStore::reset(&s));
     StatsStore::Store after;
-    CHECK(StatsStore::open(&after, opsFor(&f)));
+    StatsStore::open(&after, opsFor(&f));
     CHECK(0 == after.counters.brake);
     CHECK(0 == after.counters.powered_15s);
 
@@ -468,7 +468,7 @@ void testResetCannotResurrect()
     Flash g;
     flashErase(&g);
     StatsStore::Store t;
-    CHECK(StatsStore::open(&t, opsFor(&g)));
+    StatsStore::open(&t, opsFor(&g));
     Counters d = {};
     for (int i = 0; i < 20; i++)
     {
@@ -481,13 +481,13 @@ void testResetCannotResurrect()
 
     g.dead = false;
     StatsStore::Store cut;
-    CHECK(StatsStore::open(&cut, opsFor(&g)));
+    StatsStore::open(&cut, opsFor(&g));
     CHECK(cut.counters.brake == d.brake);
 
     /* Retrying the reset on the module that came back still works. */
     CHECK(StatsStore::reset(&cut));
     StatsStore::Store settled;
-    CHECK(StatsStore::open(&settled, opsFor(&g)));
+    StatsStore::open(&settled, opsFor(&g));
     CHECK(0 == settled.counters.brake);
 }
 
@@ -496,7 +496,7 @@ void testNeverErasesTheSectorHoldingTheData()
     Flash f;
     flashErase(&f);
     StatsStore::Store s;
-    CHECK(StatsStore::open(&s, opsFor(&f)));
+    StatsStore::open(&s, opsFor(&f));
 
     Counters c = {};
     for (int i = 0; i < 200; i++)
@@ -526,7 +526,7 @@ void testAPowerCutEveryFewRecords()
     for (int ride = 0; ride < 40; ride++)
     {
         StatsStore::Store s;
-        CHECK(StatsStore::open(&s, opsFor(&f)));
+        StatsStore::open(&s, opsFor(&f));
         CHECK(s.counters.brake == confirmed.brake);
         c = s.counters;
 
@@ -548,6 +548,135 @@ void testAPowerCutEveryFewRecords()
     CHECK(confirmed.brake > 200);
 }
 
+
+void testRecordBytesArePinnedLittleEndian()
+{
+    /* The on-flash layout is fixed by these bytes, not by whatever the host
+     * happens to be: a record written by the module reads the same in the
+     * test, and a future change of layout has to change this vector. */
+    Counters c = {};
+    c.boots = 0x01020304;
+    c.brake = 7;
+    uint8_t slot[SLOT_BYTES];
+    encodeRecord(slot, 0xAABBCCDD, c);
+    CHECK(0x3C == slot[0] && 0x5A == slot[1] && 0xC3 == slot[2] && 0xA5 == slot[3]);
+    CHECK(0xDD == slot[4] && 0xCC == slot[5] && 0xBB == slot[6] && 0xAA == slot[7]);
+    CHECK(0x04 == slot[8] && 0x03 == slot[9] && 0x02 == slot[10] && 0x01 == slot[11]);
+    CHECK(7 == slot[8 + 3 * 4]);
+    Counters back = {};
+    CHECK(recordValid(slot, 0xAABBCCDD, &back));
+    CHECK(back.boots == c.boots && back.brake == c.brake);
+}
+
+void testRottenClockIsRejected()
+{
+    Counters a = {};
+    a.powered_15s = 100;
+    a.brake = 10;
+
+    /* Bits only went up and the CRC happened to match: without a bound on
+     * the clock itself, this would make every other jump look reasonable. */
+    Counters rot = a;
+    rot.powered_15s = 0xFFFFFFFF;
+    rot.brake = 15;
+    CHECK(!plausible(a, rot));
+
+    /* An hour between neighbours is the ceiling; an ordinary gap is fine. */
+    Counters gap = a;
+    gap.powered_15s = a.powered_15s + MAX_GAP_TICKS;
+    CHECK(plausible(a, gap));
+    gap.powered_15s++;
+    CHECK(!plausible(a, gap));
+
+    Counters boots = advance(a);
+    boots.boots = a.boots + MAX_BOOTS_PER_RECORD + 1;
+    CHECK(!plausible(a, boots));
+}
+
+void testRejectedRecordOpensAFreshGeneration()
+{
+    /* A record that fails plausibility is never invalidated in flash. If the
+     * store kept appending in the same sector, the next record — written from
+     * the older base — would sit below the rejected one and be rejected in
+     * turn at every later boot, landing on the same old value forever. */
+    Flash f;
+    flashErase(&f);
+    StatsStore::Store s;
+    StatsStore::open(&s, opsFor(&f));
+
+    Counters c = {};
+    for (int i = 0; i < 10; i++)
+    {
+        c = advance(c);
+        CHECK(flush(&s, c));
+    }
+    const Counters good = c;
+
+    /* An implausible record lands: a jump no ride could produce. */
+    Counters bad = advance(c);
+    bad.brake += 500;
+    CHECK(flush(&s, bad));
+    const int poisoned_sector = s.sector;
+    const uint32_t poisoned_generation = s.generation;
+
+    StatsStore::Store after;
+    StatsStore::open(&after, opsFor(&f));
+    CHECK(after.counters.brake == good.brake);
+    CHECK(1 == after.counters.anomalies);
+
+    /* The next write goes into a fresh generation, not after the bad one. */
+    c = advance(after.counters);
+    CHECK(flush(&after, c));
+    CHECK(after.sector != poisoned_sector);
+    CHECK(after.generation == poisoned_generation + 1);
+
+    /* And every later boot lands on the new data, not back on the old base. */
+    StatsStore::Store later;
+    StatsStore::open(&later, opsFor(&f));
+    CHECK(later.counters.brake == c.brake);
+    CHECK(1 == later.counters.anomalies);
+    c = advance(c);
+    CHECK(flush(&later, c));
+    StatsStore::Store latest;
+    StatsStore::open(&latest, opsFor(&f));
+    CHECK(latest.counters.brake == c.brake);
+}
+
+void testFailedHeaderWriteMeansTheSpareIsNoLongerBlank()
+{
+    Flash f;
+    flashErase(&f);
+    StatsStore::Store s;
+    StatsStore::open(&s, opsFor(&f));
+
+    Counters c = {};
+    for (int i = 0; i < RECORDS_PER_SECTOR; i++)
+    {
+        c = advance(c);
+        CHECK(flush(&s, c));
+    }
+    CHECK(StatsStore::prepareSpare(&s));
+    CHECK(s.spare_erased);
+
+    /* The header program is cut half way. The spare now holds bits, and must
+     * not be treated as blank again: programming over a torn slot is how
+     * cells come to verify now and rot later. */
+    f.writes_to_tear = 0;
+    f.tear_bytes = SLOT_BYTES / 2;
+    c = advance(c);
+    CHECK(!StatsStore::append(&s, c));
+    f.dead = false;
+    CHECK(!s.spare_erased);
+
+    /* Recovery goes through an erase, then the roll-over succeeds. */
+    StatsStore::Store after;
+    StatsStore::open(&after, opsFor(&f));
+    CHECK(StatsStore::needsSpare(&after));
+    c = advance(after.counters);
+    CHECK(flush(&after, c));
+    CHECK(after.counters.brake == c.brake);
+}
+
 } // namespace
 
 int main()
@@ -563,6 +692,10 @@ int main()
     testResetCannotResurrect();
     testNeverErasesTheSectorHoldingTheData();
     testAPowerCutEveryFewRecords();
+    testRecordBytesArePinnedLittleEndian();
+    testRottenClockIsRejected();
+    testRejectedRecordOpensAFreshGeneration();
+    testFailedHeaderWriteMeansTheSpareIsNoLongerBlank();
 
     if (0 != g_fail)
     {

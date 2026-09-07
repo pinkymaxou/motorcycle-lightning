@@ -15,14 +15,20 @@ namespace
 {
 
 constexpr uint32_t CRC32_POLY = 0xEDB88320;
+/* Record layout, in words: magic, generation, the counters, reserved, crc. */
+constexpr uint32_t GENERATION_WORD = 1;
+constexpr uint32_t COUNTERS_WORD = 2;
 constexpr uint32_t CRC_WORD = SLOT_WORDS - 1;
 constexpr uint32_t CRC_COVERAGE_BYTES = CRC_WORD * 4;   /* 60 */
+/* Header layout: magic, format version, generation, reserved, crc. */
+constexpr uint32_t FORMAT_WORD = 1;
+constexpr uint32_t HEADER_GENERATION_WORD = 2;
 
 /* Word accessors, little-endian on both the device and the host so a record
  * written by one is read the same way by the other. */
 uint32_t getWord(const uint8_t* slot, const uint32_t index)
 {
-    const uint8_t* p = slot + index * 4;
+    const uint8_t* const p = slot + index * 4;
     return static_cast<uint32_t>(p[0]) |
            (static_cast<uint32_t>(p[1]) << 8) |
            (static_cast<uint32_t>(p[2]) << 16) |
@@ -31,7 +37,7 @@ uint32_t getWord(const uint8_t* slot, const uint32_t index)
 
 void putWord(uint8_t* slot, const uint32_t index, const uint32_t value)
 {
-    uint8_t* p = slot + index * 4;
+    uint8_t* const p = slot + index * 4;
     p[0] = static_cast<uint8_t>(value);
     p[1] = static_cast<uint8_t>(value >> 8);
     p[2] = static_cast<uint8_t>(value >> 16);
@@ -92,11 +98,11 @@ bool headerValid(const uint8_t* slot, uint32_t* generation)
     {
         return false;
     }
-    if (FORMAT_VERSION != getWord(slot, 1))
+    if (FORMAT_VERSION != getWord(slot, FORMAT_WORD))
     {
         return false;
     }
-    const uint32_t gen = getWord(slot, 2);
+    const uint32_t gen = getWord(slot, HEADER_GENERATION_WORD);
     if (0 == gen || gen > GENERATION_MAX)
     {
         return false;
@@ -113,8 +119,8 @@ void encodeHeader(uint8_t* slot, const uint32_t generation)
 {
     std::memset(slot, 0, SLOT_BYTES);
     putWord(slot, 0, HEADER_MAGIC);
-    putWord(slot, 1, FORMAT_VERSION);
-    putWord(slot, 2, generation);
+    putWord(slot, FORMAT_WORD, FORMAT_VERSION);
+    putWord(slot, HEADER_GENERATION_WORD, generation);
     seal(slot);
 }
 
@@ -126,7 +132,7 @@ bool recordValid(const uint8_t* slot, const uint32_t generation, Counters* out)
     }
     /* A record carries its sector's generation, so one left behind by an
      * interrupted erase cannot be read as belonging to the current one. */
-    if (generation != getWord(slot, 1))
+    if (generation != getWord(slot, GENERATION_WORD))
     {
         return false;
     }
@@ -136,7 +142,12 @@ bool recordValid(const uint8_t* slot, const uint32_t generation, Counters* out)
     }
     if (nullptr != out)
     {
-        std::memcpy(out, slot + 2 * 4, sizeof(*out));
+        uint32_t words[COUNTER_WORDS];
+        for (uint32_t i = 0; i < COUNTER_WORDS; i++)
+        {
+            words[i] = getWord(slot, COUNTERS_WORD + i);
+        }
+        std::memcpy(out, words, sizeof(*out));
     }
     return true;
 }
@@ -145,15 +156,22 @@ void encodeRecord(uint8_t* slot, const uint32_t generation, const Counters& c)
 {
     std::memset(slot, 0, SLOT_BYTES);
     putWord(slot, 0, RECORD_MAGIC);
-    putWord(slot, 1, generation);
-    std::memcpy(slot + 2 * 4, &c, sizeof(c));
+    putWord(slot, GENERATION_WORD, generation);
+    uint32_t words[COUNTER_WORDS];
+    std::memcpy(words, &c, sizeof(c));
+    for (uint32_t i = 0; i < COUNTER_WORDS; i++)
+    {
+        putWord(slot, COUNTERS_WORD + i, words[i]);
+    }
     seal(slot);
 }
 
 bool plausible(const Counters& older, const Counters& newer)
 {
-    const uint32_t* a = reinterpret_cast<const uint32_t*>(&older);
-    const uint32_t* b = reinterpret_cast<const uint32_t*>(&newer);
+    uint32_t a[COUNTER_WORDS];
+    uint32_t b[COUNTER_WORDS];
+    std::memcpy(a, &older, sizeof(a));
+    std::memcpy(b, &newer, sizeof(b));
 
     /* Nothing the module counts can ever run backwards. NOR flash only fails
      * upwards, so this alone catches most of what a torn erase can do. */
@@ -165,9 +183,25 @@ bool plausible(const Counters& older, const Counters& newer)
         }
     }
 
-    /* Every event counter is then tied to the clock, which is the slowest and
-     * most constrained counter there is. */
-    const uint32_t elapsed_s = (newer.powered_15s - older.powered_15s) * TICK_SECONDS;
+    /* The clock is the yardstick for everything else, so it is bounded first:
+     * a clock word that rotted toward all-ones would otherwise make any jump
+     * in the other counters look reasonable. */
+    const uint32_t gap = newer.powered_15s - older.powered_15s;
+    if (gap > MAX_GAP_TICKS)
+    {
+        return false;
+    }
+    if (newer.boots - older.boots > MAX_BOOTS_PER_RECORD)
+    {
+        return false;
+    }
+    if (newer.anomalies - older.anomalies > MAX_ANOMALIES_PER_RECORD)
+    {
+        return false;
+    }
+
+    /* Every event counter is then tied to that clock. */
+    const uint32_t elapsed_s = gap * TICK_SECONDS;
     if (newer.wifi_15s > newer.powered_15s)
     {
         return false;
@@ -198,7 +232,6 @@ bool plausible(const Counters& older, const Counters& newer)
 void scanSector(const SlotReader read, void* ctx, ScanResult* out)
 {
     std::memset(out, 0, sizeof(*out));
-    out->record_slot = -1;
     out->next_slot = FIRST_RECORD_SLOT;
 
     uint8_t slot[SLOT_BYTES];
@@ -239,7 +272,6 @@ void scanSector(const SlotReader read, void* ctx, ScanResult* out)
         return;   /* erased and headed: empty, ready at the first record slot */
     }
     out->next_slot = last_used + 1;
-    out->full = (out->next_slot >= SLOTS_PER_SECTOR);
 
     /* The newest record that is both valid and coherent with the one before
      * it. A candidate that fails plausibility is dropped and its predecessor
@@ -265,12 +297,12 @@ void scanSector(const SlotReader read, void* ctx, ScanResult* out)
         }
         candidate = here;   /* it did not: fall back and keep looking */
         candidate_slot = i;
+        out->rejected++;
     }
     if (candidate_slot >= 0)
     {
         out->have_record = true;
         out->counters = candidate;
-        out->record_slot = candidate_slot;
     }
 }
 

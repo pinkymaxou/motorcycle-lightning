@@ -58,6 +58,16 @@ constexpr uint32_t COUNTER_WORDS = sizeof(Counters) / 4;   /* 12 */
 
 /* One tick of powered time. The unit the time counters are kept in. */
 constexpr uint32_t TICK_SECONDS = 15;
+/* Consecutive records in a sector are one tick apart, two after a transient
+ * write failure; a sector that fills while no quiet moment comes gets no
+ * records at all until the next generation, whose first record is not
+ * compared with anything. So an hour between two neighbours is already
+ * absurd, and a clock word that has rotted upward is caught here. */
+constexpr uint32_t MAX_GAP_TICKS = 3600 / TICK_SECONDS;
+/* A record carries at most one boot over its predecessor (a flush on the way
+ * to a reboot, then the boot), and at most one scan's worth of rejections. */
+constexpr uint32_t MAX_BOOTS_PER_RECORD = 4;
+constexpr uint32_t MAX_ANOMALIES_PER_RECORD = 64;
 /* Plausibility ceilings, per second of the elapsed time a record reports. */
 constexpr uint32_t MAX_BRAKE_PER_S = 1;
 constexpr uint32_t MAX_USES_PER_S = 1;
@@ -102,14 +112,16 @@ struct ScanResult
     uint32_t generation;
     bool     have_record;   /* a valid, coherent record was found */
     Counters counters;      /* only meaningful when have_record */
-    int      record_slot;   /* slot the winning record came from, -1 if none */
     int      next_slot;     /* where the next record goes */
-    bool     full;          /* no free slot left: roll over before writing */
+    uint32_t rejected;      /* valid records passed over as implausible */
 };
 
 /* Walks one sector: validates the header, then scans backwards for the last
  * occupied slot and takes the newest record that is both valid and coherent
- * with the one before it. */
+ * with the one before it. `rejected` counts the ones it had to step past —
+ * the caller must then start a fresh generation, because a record written
+ * from the older base would sit *below* the rejected one and be rejected in
+ * turn at the next boot, forever landing on the same old value. */
 void scanSector(SlotReader read, void* ctx, ScanResult* out);
 
 } // namespace StatsRecord

@@ -44,10 +44,17 @@ struct Store
     Counters counters;      /* what flash last confirmed */
 };
 
-/* Reads both sectors and settles on the newest coherent state. Returns false
- * if nothing could be established and nothing could be bootstrapped, which
- * leaves persisting false and the counters at zero. */
-bool open(Store* s, const Ops& ops);
+/* Reads both sectors and settles on the newest coherent state. Nothing
+ * readable anywhere is not a failure: the store starts at generation 0 with
+ * no room, so the first append takes the ordinary roll-over path. A failing
+ * flash is found out later, by the writes themselves.
+ *
+ * When the scan had to step past an implausible record, the store is left
+ * with no room as well, so the next write opens a fresh generation: a record
+ * written from the older base would sit below the rejected one and be
+ * rejected in turn at every later boot. The rejections are folded into the
+ * `anomalies` counter so the page can say it happened. */
+void open(Store* s, const Ops& ops);
 
 /* Appends one record. Returns false without losing anything when the sector
  * is full and the spare has not been erased yet — the caller keeps counting

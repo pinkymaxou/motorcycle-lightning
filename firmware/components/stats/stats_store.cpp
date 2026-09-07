@@ -20,8 +20,23 @@ struct SectorView
 
 bool readThroughView(void* ctx, const int index, uint8_t* out)
 {
-    SectorView* v = static_cast<SectorView*>(ctx);
+    const SectorView* const v = static_cast<const SectorView*>(ctx);
     return v->ops->readSlot(v->ops->ctx, v->sector, index, out);
+}
+
+/* The sector that may be erased: the one NOT holding the newest data. The
+ * invariant everything rests on, as a runtime check rather than an assert,
+ * because this build compiles asserts out. A sector index outside the two
+ * can only come from corrupted state, and then nothing may be erased. */
+bool spareOf(Store* s, int* spare)
+{
+    if (s->sector < 0 || s->sector >= SECTOR_COUNT)
+    {
+        s->persisting = false;
+        return false;
+    }
+    *spare = (SECTOR_COUNT - 1) - s->sector;
+    return true;
 }
 
 int otherSector(const int sector)
@@ -57,19 +72,18 @@ bool commitNextGeneration(Store* s)
         return false;
     }
 
-    const int spare = otherSector(s->sector);
-    /* The invariant, as a runtime check rather than an assert: this build
-     * compiles asserts out. Never erase or claim the sector that holds the
-     * newest data. */
-    if (spare == s->sector)
+    int spare = 0;
+    if (!spareOf(s, &spare))
     {
-        s->persisting = false;
         return false;
     }
 
     const uint32_t next_generation = s->generation + 1;
     uint8_t slot[SLOT_BYTES];
     encodeHeader(slot, next_generation);
+    /* From here the header slot may hold bits: whatever happens, the spare is
+     * no longer blank and must be erased again before another attempt. */
+    s->spare_erased = false;
     if (!s->ops.writeSlot(s->ops.ctx, spare, HEADER_SLOT, slot))
     {
         noteFailure(s);
@@ -88,17 +102,15 @@ bool commitNextGeneration(Store* s)
     s->sector = spare;
     s->generation = next_generation;
     s->next_slot = FIRST_RECORD_SLOT;
-    s->spare_erased = false;
     return true;
 }
 
 } // namespace
 
-bool open(Store* s, const Ops& ops)
+void open(Store* s, const Ops& ops)
 {
     std::memset(s, 0, sizeof(*s));
     s->ops = ops;
-    s->next_slot = FIRST_RECORD_SLOT;
 
     ScanResult scan[SECTOR_COUNT];
     for (int i = 0; i < SECTOR_COUNT; i++)
@@ -131,7 +143,7 @@ bool open(Store* s, const Ops& ops)
         s->next_slot = SLOTS_PER_SECTOR;
         s->spare_erased = scan[otherSector(0)].blank;
         s->persisting = true;
-        return true;
+        return;
     }
 
     const int other = otherSector(winner);
@@ -141,18 +153,30 @@ bool open(Store* s, const Ops& ops)
     s->spare_erased = scan[other].blank;
     s->persisting = true;
 
+    /* Only the sector the counters actually come from can have rejections
+     * worth counting: the other one is history, already accounted for. */
+    uint32_t rejected = scan[winner].rejected;
     if (scan[winner].have_record)
     {
         s->counters = scan[winner].counters;
+        if (rejected > 0)
+        {
+            /* Leave no room here: the next write must open a fresh
+             * generation, so the rejected record is never anyone's
+             * predecessor again. */
+            s->next_slot = SLOTS_PER_SECTOR;
+        }
     }
     else if (scan[other].have_record)
     {
         /* A header with no record is what a power cut at the roll-over commit
          * point leaves. The previous sector was never touched, so resume from
-         * it: at most one interval is lost. */
+         * it: at most one interval is lost. This sector is already the fresh
+         * generation, so nothing more needs forcing. */
         s->counters = scan[other].counters;
+        rejected += scan[other].rejected;
     }
-    return true;
+    s->counters.anomalies += rejected;
 }
 
 bool needsSpare(const Store* s)
@@ -171,10 +195,9 @@ bool prepareSpare(Store* s)
         return true;
     }
 
-    const int spare = otherSector(s->sector);
-    if (spare == s->sector)
+    int spare = 0;
+    if (!spareOf(s, &spare))
     {
-        s->persisting = false;
         return false;
     }
     if (!s->ops.eraseSector(s->ops.ctx, spare))
