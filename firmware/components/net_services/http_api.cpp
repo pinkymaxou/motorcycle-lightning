@@ -371,7 +371,7 @@ esp_err_t hSysinfoGet(httpd_req_t* req)
 
     Stats::Counters counters;
     Stats::get(&counters);
-    const char* why = "";
+    const char* const why = Stats::notStoredWhy();
     msg.has_stats = true;
     msg.stats.boots = counters.boots;
     msg.stats.powered_15s = counters.powered_15s;
@@ -385,7 +385,7 @@ esp_err_t hSysinfoGet(httpd_req_t* req)
     msg.stats.hazard_flashes = counters.hazard_flashes;
     msg.stats.aux = counters.aux;
     msg.stats.anomalies = counters.anomalies;
-    msg.stats.not_stored = !Stats::stored(&why);
+    msg.stats.not_stored = (nullptr != why);
     if (msg.stats.not_stored)
     {
         strlcpy(msg.stats.not_stored_why, why, sizeof(msg.stats.not_stored_why));
@@ -449,10 +449,11 @@ esp_err_t hCommandPost(httpd_req_t* req)
         {
             break;              /* presence alone is not a request */
         }
-        if (!Stats::reset())
+        /* The housekeeping task does the actual reset, once nothing is being
+         * signalled; this waits for it so the page learns the real outcome. */
+        const char* why = "";
+        if (!Stats::reset(Stats::RESET_WAIT_MS, &why))
         {
-            const char* why = "";
-            Stats::stored(&why);
             return sendError(req, "503 Service Unavailable", why);
         }
         return sendOk(req);

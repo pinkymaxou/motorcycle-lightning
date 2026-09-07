@@ -14,6 +14,8 @@
 #include "esp_ota_ops.h"
 #include "esp_timer.h"
 
+#include "stats.h"
+
 namespace NetServices
 {
 
@@ -193,6 +195,9 @@ esp_err_t otaPost(httpd_req_t* const req)
     }
 
     ESP_LOGW(TAG, "update written to %s, rebooting", target->label);
+    /* The counters would otherwise lose the last interval on the way into the
+     * new firmware — the one planned restart the rider triggers from the page. */
+    Stats::flush(Stats::FLUSH_WAIT_MS);
     scheduleReboot();
     return sendText(req, "200 OK", "update written, rebooting");
 }

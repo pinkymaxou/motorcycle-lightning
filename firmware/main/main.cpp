@@ -80,12 +80,12 @@ void onButtonHold()
  * crash log. The way back in when the access point's password is lost. */
 void factoryReset()
 {
-    ESP_LOGW(TAG, "button held %us — erasing NVS and rebooting",
+    ESP_LOGW(TAG, "button held %us — erasing NVS and the ride counters, rebooting",
              static_cast<unsigned>(UiButton::HOLD_FACTORY_MS / 1000));
     StatusLed::solid(FACTORY_ACK_RGB[0], FACTORY_ACK_RGB[1], FACTORY_ACK_RGB[2]);
     vTaskDelay(pdMS_TO_TICKS(FACTORY_ACK_MS));
     nvs_flash_erase();
-    Stats::eraseAll();   /* a raw partition is untouched by nvs_flash_erase */
+    Stats::factoryWipe();   /* a raw partition is untouched by nvs_flash_erase */
     esp_restart();
 }
 
@@ -102,7 +102,7 @@ void applyNetRequest(const NetRequest req, const char* source)
     }
     if (!want_on)
     {
-        Stats::flush();   /* the radio going down is a good moment to write */
+        Stats::flush(Stats::FLUSH_WAIT_MS);   /* the radio going down is a good moment to write */
         NetServices::stop();
         StatusLed::set(StatusLed::State::Running);
         ESP_LOGI(TAG, "%s: config WiFi OFF", source);
@@ -152,7 +152,15 @@ void onConsoleLine(const char* line)
     }
     else if (0 == std::strcmp(line, "stats reset"))
     {
-        ESP_LOGI(TAG, "counters %s", Stats::reset() ? "cleared" : "not cleared");
+        const char* why = "";
+        if (Stats::reset(Stats::RESET_WAIT_MS, &why))
+        {
+            ESP_LOGI(TAG, "counters cleared");
+        }
+        else
+        {
+            ESP_LOGW(TAG, "counters not cleared: %s", why);
+        }
     }
     else if (0 == std::strcmp(line, "crashlog clear"))
     {
@@ -161,7 +169,7 @@ void onConsoleLine(const char* line)
     }
     else if (0 == std::strcmp(line, "reboot"))
     {
-        Stats::flush();
+        Stats::flush(Stats::FLUSH_WAIT_MS);
         ESP_LOGW(TAG, "rebooting on console request");
         esp_restart();
     }
@@ -282,7 +290,8 @@ extern "C" void app_main()
     }
 
     /* 6b. ride counters. Deliberately after the render task: this reads
-     *     flash, and the boot budget belongs to the lighting. */
+     *     flash, and the boot budget belongs to the lighting. This task owns
+     *     them from here on; everyone else goes through a request. */
     Stats::init();
     ESP_LOGI(TAG, "counters: %s", Stats::summary());
 
