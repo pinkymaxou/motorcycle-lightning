@@ -210,8 +210,9 @@ config WiFi comes up.
 
 **Locked yourself out?** Hold the module button for 15 seconds. The status LED
 turns fuchsia for a second, and the module erases everything it remembers —
-configuration, access point, learned flasher period — and comes back on
-factory settings.
+configuration, access point, learned flasher period, ride counters — and
+comes back on factory settings. **Restore defaults** on the Setup tab, by
+contrast, leaves the counters alone; they have their own reset button.
 
 ### Your home network
 
@@ -258,24 +259,38 @@ losing power, so it adds up across every ride.
 | Config WiFi on | how much of that time the page was reachable |
 | Power-ups | how many times the ignition has brought it up |
 
-A **use** is one switch-on, counted once the signal has stopped. A **flash** is
-one on/off cycle. Hazards count only as hazards: switching the hazards on
-while you were already signalling left makes the whole episode a hazard, and
-nothing is added to the left count. Signals you inject yourself from the
-Simulate tab are counted too — they are, after all, things the module did.
+A **use** is one switch-on. A **flash** is one on/off cycle. Both are counted
+as they happen, so a signal still running when you switch the ignition off is
+already on the books. A hazard is a hazard, never a left plus a right: the
+switch-on that lights both sides is one hazard use, and every flash while both
+sides run is a hazard flash. If you were already signalling left when the
+hazards came on, that left turn keeps the use and flashes it had earned, and
+everything from then on is hazard.
 
-**Reset counters** puts every one of them back to zero.
+Signals you inject yourself from the Simulate tab are counted too — they are,
+after all, things the module did. While **Override real inputs** is on, the
+bike's own signals are not seen, so they are not counted either.
+
+**Reset counters** puts every one of them back to zero. The module does it
+the moment nothing is being signalled; if you press it mid-signal it waits a
+few seconds, then asks you to try again.
 
 The counters are written down every 15 seconds, into two areas of flash used
 in turn, so cutting the ignition part way through a write costs at most those
-15 seconds and can never leave a wrong number behind. Roughly every quarter
-hour the module tidies that storage, which holds the strip's picture still for
-a fraction of a second. It waits for a moment when nothing is being
-signalled, so it never happens while you are braking or indicating.
+15 seconds and can never leave a wrong number behind. A power-up that lasts
+less than 15 seconds is not written down at all, so it does not show in
+**Power-ups**. Roughly every quarter hour the module tidies that storage,
+which holds the strip's picture still for a fraction of a second. It waits for
+a moment when nothing is being signalled, so it never happens while you are
+braking or indicating.
 
 If the row block says the counters are **not being saved**, the module is
-still counting but only since this power-up. The usual reason is a firmware
-update done over WiFi, which cannot add the storage area — see below.
+still counting but only in memory. The usual reason is a firmware update done
+over WiFi, which cannot add the storage area — see below. It can also say it
+is **waiting for the signals to stop**: the storage is full and the module
+has not had a quiet moment to make room, which happens when an input stays on
+for a long stretch, such as an AUX line wired to running lights. Nothing is
+lost while the power holds; the counts are written the moment it is quiet.
 
 ---
 
