@@ -212,14 +212,24 @@ void testBrakeDebounce()
 }
 
 
-/* Runs `cycles` blink cycles of the given channels at a 700 ms period, then
- * lets the episode expire. */
+/* Runs `cycles` blink cycles at a 700 ms period. `right_lead_ms` lets the
+ * right lamp's edge land a few milliseconds before the left one, the way two
+ * lamps on one relay never quite agree. */
 uint32_t blinkTrain(Blink::BlinkSystem* s, uint32_t now, const int cycles,
-                    const bool left, const bool right)
+                    const bool left, const bool right,
+                    const uint32_t right_lead_ms = 0)
 {
     for (int i = 0; i < cycles; i++)
     {
-        now = runMs(s, now, 350, left, right, false, false);
+        if (right_lead_ms > 0 && left && right)
+        {
+            now = runMs(s, now, right_lead_ms, false, true, false, false);
+            now = runMs(s, now, 350 - right_lead_ms, true, true, false, false);
+        }
+        else
+        {
+            now = runMs(s, now, 350, left, right, false, false);
+        }
         now = runMs(s, now, 350, false, false, false, false);
     }
     return now;
@@ -230,15 +240,24 @@ uint32_t settle(Blink::BlinkSystem* s, uint32_t now)
     return runMs(s, now, 1500, false, false, false, false);
 }
 
-void testTurnUseCountedOnceAtEpisodeEnd()
+void testTurnUseCreditedAsItHappens()
 {
     Blink::BlinkSystem s;
     Blink::init(&s, 700, 12);
     uint32_t now = 1000;
 
-    now = blinkTrain(&s, now, 3, true, false);
-    /* Still blinking: nothing is credited until the episode has ended. */
-    CHECK(0 == s.counts.left_uses);
+    /* The switch-on is held just long enough to see whether the other side
+     * joins, then it is a left turn — before the episode is anywhere near
+     * over, so a power cut mid-signal still has it. */
+    now = runMs(&s, now, Blink::HAZARD_JOIN_MS + Blink::DEBOUNCE_SAMPLES + 5,
+                true, false, false, false);
+    CHECK(1 == s.counts.left_uses);
+    CHECK(1 == s.counts.left_flashes);
+
+    now = runMs(&s, now, 350 - Blink::HAZARD_JOIN_MS - Blink::DEBOUNCE_SAMPLES - 5,
+                true, false, false, false);
+    now = runMs(&s, now, 350, false, false, false, false);
+    now = blinkTrain(&s, now, 2, true, false);
     now = settle(&s, now);
     CHECK(1 == s.counts.left_uses);
     CHECK(3 == s.counts.left_flashes);
@@ -252,7 +271,7 @@ void testTurnUseCountedOnceAtEpisodeEnd()
     CHECK(5 == s.counts.left_flashes);
 }
 
-void testHazardCountsOnlyAsHazard()
+void testHazardFromRestCountsOnlyAsHazard()
 {
     Blink::BlinkSystem s;
     Blink::init(&s, 700, 12);
@@ -263,43 +282,99 @@ void testHazardCountsOnlyAsHazard()
 
     CHECK(1 == s.counts.hazard_uses);
     CHECK(4 == s.counts.hazard_flashes);
-    /* Neither side may claim it. */
     CHECK(0 == s.counts.left_uses);
     CHECK(0 == s.counts.right_uses);
     CHECK(0 == s.counts.left_flashes);
     CHECK(0 == s.counts.right_flashes);
 }
 
-void testTurnThenHazardIsHazardAlone()
+void testHazardIsSymmetric()
+{
+    /* The right lamp's edge landing first must give the same tally as the
+     * left one landing first. */
+    Blink::BlinkSystem s;
+    Blink::init(&s, 700, 12);
+    uint32_t now = 1000;
+
+    now = blinkTrain(&s, now, 4, true, true, 8);
+    now = settle(&s, now);
+
+    CHECK(1 == s.counts.hazard_uses);
+    CHECK(4 == s.counts.hazard_flashes);
+    CHECK(0 == s.counts.left_uses);
+    CHECK(0 == s.counts.right_uses);
+    CHECK(0 == s.counts.left_flashes);
+    CHECK(0 == s.counts.right_flashes);
+}
+
+void testHazardIsCreditedTheMomentItForms()
 {
     Blink::BlinkSystem s;
     Blink::init(&s, 700, 12);
     uint32_t now = 1000;
 
-    /* Signalling left, then the hazards go on without a pause. */
+    /* Nothing has settled yet — the ignition could be cut right here — and
+     * the hazard is already on the books. */
+    now = runMs(&s, now, 20, true, true, false, false);
+    CHECK(1 == s.counts.hazard_uses);
+    CHECK(1 == s.counts.hazard_flashes);
+}
+
+void testTurnThenHazardKeepsBoth()
+{
+    Blink::BlinkSystem s;
+    Blink::init(&s, 700, 12);
+    uint32_t now = 1000;
+
+    /* Signalling left, then the hazards go on without a pause: the left turn
+     * that happened stays a left turn, and what follows is a hazard. */
     now = blinkTrain(&s, now, 2, true, false);
     now = blinkTrain(&s, now, 3, true, true);
     now = settle(&s, now);
 
+    CHECK(1 == s.counts.left_uses);
+    CHECK(2 == s.counts.left_flashes);
     CHECK(1 == s.counts.hazard_uses);
-    CHECK(5 == s.counts.hazard_flashes);
-    CHECK(0 == s.counts.left_uses);
-    CHECK(0 == s.counts.left_flashes);
+    CHECK(3 == s.counts.hazard_flashes);
     CHECK(0 == s.counts.right_uses);
+    CHECK(0 == s.counts.right_flashes);
+
+    /* And the mirror image tallies the same way on its own side. */
+    Blink::BlinkSystem m;
+    Blink::init(&m, 700, 12);
+    now = 1000;
+    now = blinkTrain(&m, now, 2, false, true);
+    now = blinkTrain(&m, now, 3, true, true);
+    now = settle(&m, now);
+    CHECK(1 == m.counts.right_uses);
+    CHECK(2 == m.counts.right_flashes);
+    CHECK(1 == m.counts.hazard_uses);
+    CHECK(3 == m.counts.hazard_flashes);
+    CHECK(0 == m.counts.left_uses);
 }
 
-void testRightIsCountedOnItsOwnSide()
+void testHazardOffAndOnAgainIsTwoHazards()
 {
     Blink::BlinkSystem s;
     Blink::init(&s, 700, 12);
     uint32_t now = 1000;
 
-    now = blinkTrain(&s, now, 2, false, true);
+    /* Hazards for 3, then only the left keeps going for 2, then hazards again
+     * for 2: seven flashes of the left lamp. Nothing may be counted twice and
+     * nothing may vanish. The first left-only flash still falls inside the
+     * right channel's exit grace, so the strip — and therefore the count —
+     * still call that one a hazard flash. */
+    now = blinkTrain(&s, now, 3, true, true);
+    now = blinkTrain(&s, now, 2, true, false);
+    now = blinkTrain(&s, now, 2, true, true);
     now = settle(&s, now);
-    CHECK(1 == s.counts.right_uses);
-    CHECK(2 == s.counts.right_flashes);
-    CHECK(0 == s.counts.left_uses);
-    CHECK(0 == s.counts.hazard_uses);
+
+    CHECK(2 == s.counts.hazard_uses);
+    CHECK(6 == s.counts.hazard_flashes);
+    CHECK(1 == s.counts.left_flashes);
+    CHECK(7 == s.counts.hazard_flashes + s.counts.left_flashes);
+    CHECK(0 == s.counts.left_uses);    /* the left never switched on by itself */
+    CHECK(0 == s.counts.right_uses);
 }
 
 void testBrakeAndAuxCounted()
@@ -342,10 +417,12 @@ int main()
     testHazardBothChannels();
     testBrakeIntroHoldoff();
     testBrakeDebounce();
-    testTurnUseCountedOnceAtEpisodeEnd();
-    testHazardCountsOnlyAsHazard();
-    testTurnThenHazardIsHazardAlone();
-    testRightIsCountedOnItsOwnSide();
+    testTurnUseCreditedAsItHappens();
+    testHazardFromRestCountsOnlyAsHazard();
+    testHazardIsSymmetric();
+    testHazardIsCreditedTheMomentItForms();
+    testTurnThenHazardKeepsBoth();
+    testHazardOffAndOnAgainIsTwoHazards();
     testBrakeAndAuxCounted();
 
     if (0 != g_fail)

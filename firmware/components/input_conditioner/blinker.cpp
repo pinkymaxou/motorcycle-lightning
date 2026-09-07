@@ -103,11 +103,8 @@ int turnTick(BlinkSystem* s, BlinkChannel* c, const bool raw,
         if (!c->blink_mode)
         {
             c->blink_start_ms = now_ms;  /* entering blink mode */
-            c->episode_flashes = 0;
-            c->episode_hazard = false;
         }
         c->blink_mode = true;
-        c->episode_flashes++;
         c->last_on_edge_ms = now_ms;
     }
 
@@ -122,6 +119,25 @@ int turnTick(BlinkSystem* s, BlinkChannel* c, const bool raw,
     }
 
     return edge;
+}
+
+/* A switch-on is held for HAZARD_JOIN_MS in case the other side joins and
+ * makes it a hazard. Past that, or once the channel has stopped, it is a turn
+ * on its own side: one use and the flash that started it. */
+void settleTurnCredit(BlinkChannel* c, const uint32_t now_ms,
+                      uint32_t* uses, uint32_t* flashes)
+{
+    if (!c->credit_pending)
+    {
+        return;
+    }
+    if (c->blink_mode && now_ms - c->pending_since_ms < HAZARD_JOIN_MS)
+    {
+        return;
+    }
+    c->credit_pending = false;
+    (*uses)++;
+    (*flashes)++;
 }
 
 } // namespace
@@ -148,39 +164,66 @@ void tick(BlinkSystem* s, const bool raw_left, const bool raw_right,
 {
     const bool left_was_blinking = s->left.blink_mode;
     const bool right_was_blinking = s->right.blink_mode;
-    turnTick(s, &s->left, raw_left, now_ms);
-    turnTick(s, &s->right, raw_right, now_ms);
+    const int left_edge = turnTick(s, &s->left, raw_left, now_ms);
+    const int right_edge = turnTick(s, &s->right, raw_right, now_ms);
 
-    /* Hazard is not a signal of its own here, it is both channels blinking at
-     * once. While that lasts, both episodes are marked, so neither is ever
-     * counted as a turn — including one that began as a plain turn signal
-     * before the hazards were switched on. */
-    const bool hazard_now = s->left.blink_mode && s->right.blink_mode;
-    if (hazard_now)
+    /* A switch-on is not credited to a side yet: the other side may be about
+     * to join and make it a hazard. */
+    if (!left_was_blinking && s->left.blink_mode)
     {
-        s->left.episode_hazard = true;
-        s->right.episode_hazard = true;
+        s->left.credit_pending = true;
+        s->left.pending_since_ms = now_ms;
     }
-    else if (s->hazard_active)
+    if (!right_was_blinking && s->right.blink_mode)
     {
-        /* The pair has broken up: one hazard use, and its flashes taken from
-         * the left channel so a synchronised pair counts once, not twice. */
+        s->right.credit_pending = true;
+        s->right.pending_since_ms = now_ms;
+    }
+
+    /* Hazard is both channels blinking at once. The switch-on that forms the
+     * pair is one hazard use and one hazard flash — whether both sides came
+     * on together or one joined a turn already running. Whatever either side
+     * was still holding is absorbed into it, so a hazard from rest is never
+     * also a left and a right. */
+    const bool pair = s->left.blink_mode && s->right.blink_mode;
+    const bool pair_formed = pair && !s->hazard_active;
+    if (pair_formed)
+    {
         s->counts.hazard_uses++;
-        s->counts.hazard_flashes += s->left.episode_flashes;
+        s->counts.hazard_flashes++;
+        s->left.credit_pending = false;
+        s->right.credit_pending = false;
     }
-    s->hazard_active = hazard_now;
+    s->hazard_active = pair;
 
-    /* A turn episode is credited only once it has ended, and only if it was
-     * never part of a hazard. */
-    if (left_was_blinking && !s->left.blink_mode && !s->left.episode_hazard)
+    settleTurnCredit(&s->left, now_ms, &s->counts.left_uses, &s->counts.left_flashes);
+    settleTurnCredit(&s->right, now_ms, &s->counts.right_uses, &s->counts.right_flashes);
+
+    /* Every later ON edge is one flash. During a hazard only the channel that
+     * started first counts, so a synchronised pair counts once — and it is
+     * the channel the strip itself follows. */
+    if (pair)
     {
-        s->counts.left_uses++;
-        s->counts.left_flashes += s->left.episode_flashes;
+        if (!pair_formed)
+        {
+            const bool master_left = static_cast<int32_t>(
+                s->left.blink_start_ms - s->right.blink_start_ms) <= 0;
+            if ((master_left ? left_edge : right_edge) > 0)
+            {
+                s->counts.hazard_flashes++;
+            }
+        }
     }
-    if (right_was_blinking && !s->right.blink_mode && !s->right.episode_hazard)
+    else
     {
-        s->counts.right_uses++;
-        s->counts.right_flashes += s->right.episode_flashes;
+        if (left_edge > 0 && !s->left.credit_pending && left_was_blinking)
+        {
+            s->counts.left_flashes++;
+        }
+        if (right_edge > 0 && !s->right.credit_pending && right_was_blinking)
+        {
+            s->counts.right_flashes++;
+        }
     }
 
     const int brake_edge = debounce(&s->brake, raw_brake);
