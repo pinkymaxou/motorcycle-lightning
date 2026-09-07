@@ -211,6 +211,121 @@ void testBrakeDebounce()
     CHECK(!s.brake.debounced);
 }
 
+
+/* Runs `cycles` blink cycles of the given channels at a 700 ms period, then
+ * lets the episode expire. */
+uint32_t blinkTrain(Blink::BlinkSystem* s, uint32_t now, const int cycles,
+                    const bool left, const bool right)
+{
+    for (int i = 0; i < cycles; i++)
+    {
+        now = runMs(s, now, 350, left, right, false, false);
+        now = runMs(s, now, 350, false, false, false, false);
+    }
+    return now;
+}
+
+uint32_t settle(Blink::BlinkSystem* s, uint32_t now)
+{
+    return runMs(s, now, 1500, false, false, false, false);
+}
+
+void testTurnUseCountedOnceAtEpisodeEnd()
+{
+    Blink::BlinkSystem s;
+    Blink::init(&s, 700, 12);
+    uint32_t now = 1000;
+
+    now = blinkTrain(&s, now, 3, true, false);
+    /* Still blinking: nothing is credited until the episode has ended. */
+    CHECK(0 == s.counts.left_uses);
+    now = settle(&s, now);
+    CHECK(1 == s.counts.left_uses);
+    CHECK(3 == s.counts.left_flashes);
+    CHECK(0 == s.counts.right_uses);
+    CHECK(0 == s.counts.hazard_uses);
+
+    /* A second, separate episode is a second use. */
+    now = blinkTrain(&s, now, 2, true, false);
+    now = settle(&s, now);
+    CHECK(2 == s.counts.left_uses);
+    CHECK(5 == s.counts.left_flashes);
+}
+
+void testHazardCountsOnlyAsHazard()
+{
+    Blink::BlinkSystem s;
+    Blink::init(&s, 700, 12);
+    uint32_t now = 1000;
+
+    now = blinkTrain(&s, now, 4, true, true);
+    now = settle(&s, now);
+
+    CHECK(1 == s.counts.hazard_uses);
+    CHECK(4 == s.counts.hazard_flashes);
+    /* Neither side may claim it. */
+    CHECK(0 == s.counts.left_uses);
+    CHECK(0 == s.counts.right_uses);
+    CHECK(0 == s.counts.left_flashes);
+    CHECK(0 == s.counts.right_flashes);
+}
+
+void testTurnThenHazardIsHazardAlone()
+{
+    Blink::BlinkSystem s;
+    Blink::init(&s, 700, 12);
+    uint32_t now = 1000;
+
+    /* Signalling left, then the hazards go on without a pause. */
+    now = blinkTrain(&s, now, 2, true, false);
+    now = blinkTrain(&s, now, 3, true, true);
+    now = settle(&s, now);
+
+    CHECK(1 == s.counts.hazard_uses);
+    CHECK(5 == s.counts.hazard_flashes);
+    CHECK(0 == s.counts.left_uses);
+    CHECK(0 == s.counts.left_flashes);
+    CHECK(0 == s.counts.right_uses);
+}
+
+void testRightIsCountedOnItsOwnSide()
+{
+    Blink::BlinkSystem s;
+    Blink::init(&s, 700, 12);
+    uint32_t now = 1000;
+
+    now = blinkTrain(&s, now, 2, false, true);
+    now = settle(&s, now);
+    CHECK(1 == s.counts.right_uses);
+    CHECK(2 == s.counts.right_flashes);
+    CHECK(0 == s.counts.left_uses);
+    CHECK(0 == s.counts.hazard_uses);
+}
+
+void testBrakeAndAuxCounted()
+{
+    Blink::BlinkSystem s;
+    Blink::init(&s, 700, 12);
+    uint32_t now = 1000;
+
+    for (int i = 0; i < 3; i++)
+    {
+        now = runMs(&s, now, 200, false, false, true, false);
+        now = runMs(&s, now, 200, false, false, false, false);
+    }
+    CHECK(3 == s.counts.brake);
+
+    for (int i = 0; i < 2; i++)
+    {
+        now = runMs(&s, now, 200, false, false, false, true);
+        now = runMs(&s, now, 200, false, false, false, false);
+    }
+    CHECK(2 == s.counts.aux);
+    /* A press is one event, not one per sample it stays down. */
+    now = runMs(&s, now, 5000, false, false, true, false);
+    CHECK(4 == s.counts.brake);
+}
+
 } // namespace
 
 int main()
@@ -227,6 +342,11 @@ int main()
     testHazardBothChannels();
     testBrakeIntroHoldoff();
     testBrakeDebounce();
+    testTurnUseCountedOnceAtEpisodeEnd();
+    testHazardCountsOnlyAsHazard();
+    testTurnThenHazardIsHazardAlone();
+    testRightIsCountedOnItsOwnSide();
+    testBrakeAndAuxCounted();
 
     if (0 != g_fail)
     {

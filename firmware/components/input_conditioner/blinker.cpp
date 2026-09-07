@@ -77,8 +77,9 @@ void learnPeriod(BlinkSystem* s, const uint32_t interval_ms)
     }
 }
 
-void turnTick(BlinkSystem* s, BlinkChannel* c, const bool raw,
-              const uint32_t now_ms)
+/* Returns the debounced edge: +1 on OFF->ON, -1 on ON->OFF, 0 otherwise. */
+int turnTick(BlinkSystem* s, BlinkChannel* c, const bool raw,
+             const uint32_t now_ms)
 {
     const int edge = debounce(c, raw);
 
@@ -102,8 +103,11 @@ void turnTick(BlinkSystem* s, BlinkChannel* c, const bool raw,
         if (!c->blink_mode)
         {
             c->blink_start_ms = now_ms;  /* entering blink mode */
+            c->episode_flashes = 0;
+            c->episode_hazard = false;
         }
         c->blink_mode = true;
+        c->episode_flashes++;
         c->last_on_edge_ms = now_ms;
     }
 
@@ -116,6 +120,8 @@ void turnTick(BlinkSystem* s, BlinkChannel* c, const bool raw,
             c->blink_mode = false;
         }
     }
+
+    return edge;
 }
 
 } // namespace
@@ -140,8 +146,42 @@ void init(BlinkSystem* s, const uint32_t stored_period_ms, const uint8_t exit_x1
 void tick(BlinkSystem* s, const bool raw_left, const bool raw_right,
           const bool raw_brake, const bool raw_aux, const uint32_t now_ms)
 {
+    const bool left_was_blinking = s->left.blink_mode;
+    const bool right_was_blinking = s->right.blink_mode;
     turnTick(s, &s->left, raw_left, now_ms);
     turnTick(s, &s->right, raw_right, now_ms);
+
+    /* Hazard is not a signal of its own here, it is both channels blinking at
+     * once. While that lasts, both episodes are marked, so neither is ever
+     * counted as a turn — including one that began as a plain turn signal
+     * before the hazards were switched on. */
+    const bool hazard_now = s->left.blink_mode && s->right.blink_mode;
+    if (hazard_now)
+    {
+        s->left.episode_hazard = true;
+        s->right.episode_hazard = true;
+    }
+    else if (s->hazard_active)
+    {
+        /* The pair has broken up: one hazard use, and its flashes taken from
+         * the left channel so a synchronised pair counts once, not twice. */
+        s->counts.hazard_uses++;
+        s->counts.hazard_flashes += s->left.episode_flashes;
+    }
+    s->hazard_active = hazard_now;
+
+    /* A turn episode is credited only once it has ended, and only if it was
+     * never part of a hazard. */
+    if (left_was_blinking && !s->left.blink_mode && !s->left.episode_hazard)
+    {
+        s->counts.left_uses++;
+        s->counts.left_flashes += s->left.episode_flashes;
+    }
+    if (right_was_blinking && !s->right.blink_mode && !s->right.episode_hazard)
+    {
+        s->counts.right_uses++;
+        s->counts.right_flashes += s->right.episode_flashes;
+    }
 
     const int brake_edge = debounce(&s->brake, raw_brake);
     if (0 != brake_edge)
@@ -150,6 +190,7 @@ void tick(BlinkSystem* s, const bool raw_left, const bool raw_right,
     }
     if (brake_edge > 0)
     {
+        s->counts.brake++;
         /* replay the intro only after a long enough release */
         s->brake_intro = !s->brake_seen ||
             (now_ms - s->brake_off_edge_ms >= s->brake_holdoff_ms);
@@ -160,9 +201,14 @@ void tick(BlinkSystem* s, const bool raw_left, const bool raw_right,
         s->brake_off_edge_ms = now_ms;
     }
 
-    if (0 != debounce(&s->aux, raw_aux))
+    const int aux_edge = debounce(&s->aux, raw_aux);
+    if (0 != aux_edge)
     {
         s->aux.last_phase_edge_ms = now_ms;
+    }
+    if (aux_edge > 0)
+    {
+        s->counts.aux++;
     }
 }
 

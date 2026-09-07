@@ -29,6 +29,22 @@ constexpr uint32_t BRAKE_HOLDOFF_MS = 25000;
 /* Default blink-mode exit factor x10: period + 20% grace for the next flash. */
 constexpr uint8_t  EXIT_X10_DEFAULT = 12;
 
+/* What the bike asked for, counted at the one place the true edges are
+ * already known. A "use" is one switch-on of an indicator, credited when the
+ * episode ends; a "flash" is one on/off cycle. An episode that was ever part
+ * of a hazard counts as hazard only, never as left or right. */
+struct EventCounts
+{
+    uint32_t brake;
+    uint32_t left_uses;
+    uint32_t left_flashes;
+    uint32_t right_uses;
+    uint32_t right_flashes;
+    uint32_t hazard_uses;
+    uint32_t hazard_flashes;
+    uint32_t aux;
+};
+
 struct BlinkChannel
 {
     /* debounce */
@@ -40,6 +56,9 @@ struct BlinkChannel
     uint32_t blink_start_ms;      /* when blink mode was entered (hazard sync) */
     uint32_t last_on_edge_ms;     /* last debounced OFF->ON edge */
     uint32_t last_phase_edge_ms;  /* last debounced toggle (drives effect t0) */
+    /* current episode, for counting */
+    bool     episode_hazard;      /* the other side blinked during it */
+    uint32_t episode_flashes;     /* on/off cycles so far this episode */
 };
 
 struct BlinkSystem
@@ -59,6 +78,9 @@ struct BlinkSystem
     uint32_t pending_ms;          /* last measured interval */
     uint8_t  consist;             /* consecutive consistent measurements */
     uint8_t  exit_x10;            /* exit factor x10 (12 = period + 20%) */
+    /* event counting */
+    EventCounts counts;
+    bool     hazard_active;       /* both channels in blink mode right now */
 };
 
 /* stored_period_ms: persisted value from NVS, or 0 if never learned. */

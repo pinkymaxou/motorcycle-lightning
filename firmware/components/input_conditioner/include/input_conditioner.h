@@ -3,6 +3,7 @@
 #pragma once
 
 #include "esp_err.h"
+#include "blinker.h"
 #include "cond_state.h"
 
 namespace InputConditioner
@@ -18,6 +19,11 @@ esp_err_t init(const InputPins& pins, uint32_t stored_period_ms,
                uint8_t exit_x10);
 
 void get(CondState* out);
+
+/* A consistent snapshot of what the bike has asked for since boot. The stats
+ * module takes deltas against what it last saw, so a flush neither
+ * double-counts nor drops anything. */
+void eventCounts(Blink::EventCounts* out);
 
 /* True once when a newly learned period should be persisted; clears the flag
  * and returns the value. Call from a low-priority context (NVS write). */
