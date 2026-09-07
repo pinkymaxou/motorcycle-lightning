@@ -46,3 +46,4 @@ motolights.SysInfo.sta_ip       max_size:16
 motolights.SysInfo.ap_ip        max_size:16
 motolights.SysInfo.pins         max_count:8
 motolights.SysInfo.crash_log    max_size:64
+motolights.RideStats.not_stored_why max_size:64
