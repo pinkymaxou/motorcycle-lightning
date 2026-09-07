@@ -88,3 +88,9 @@ CONFIG_RMT_ISR_IRAM_SAFE=y
 # back to the previous slot unless the app marks itself valid, which main.cpp
 # only does once the boot sequence completed and the strips are lit.
 CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
+
+# The module is specified down to 3.0 V, but the default brownout trip is
+# 2.43 V — a band where the CPU still clocks the flash out of spec, which is
+# how a power cut turns into half-programmed cells rather than a clean stop.
+# Trip earlier so the ride counters lose an interval instead of a sector.
+CONFIG_ESP_BROWNOUT_DET_LVL_SEL_4=y
