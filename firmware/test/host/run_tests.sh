@@ -11,6 +11,11 @@ g++ $CXXFLAGS -I$ROOT/components/input_conditioner/include \
     test_blinker.cpp $ROOT/components/input_conditioner/blinker.cpp \
     -o build/test_blinker
 
+g++ $CXXFLAGS -I$ROOT/components/stats/include \
+    test_stats.cpp $ROOT/components/stats/stats_record.cpp \
+    $ROOT/components/stats/stats_store.cpp \
+    -o build/test_stats
+
 g++ $CXXFLAGS -I$ROOT/components/fx/include \
     test_eval.cpp $ROOT/components/fx/effect_eval.cpp \
     -o build/test_eval
@@ -46,6 +51,7 @@ g++ $CXXFLAGS -include stubs/host_compat.h -Istubs \
     -o build/test_config
 
 ./build/test_blinker
+./build/test_stats
 ./build/test_eval
 ./build/test_arbiter
 ./build/test_config

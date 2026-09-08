@@ -26,7 +26,7 @@ shot sim    01-simulate.png 830
 shot setup  02-setup.png    1560
 shot wifi   05-wifi.png     700
 shot pinout 03-pinout.png   570
-shot system 04-system.png   1000
+shot system 04-system.png   1400
 
 # The WiFi tab carries two network names — the module's access point and the
 # home one. Blur both fields. The boxes are in screenshot pixels (device

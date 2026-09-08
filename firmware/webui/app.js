@@ -162,6 +162,7 @@ function cmdTest(ev,active){
 }
 function cmdOverride(active){const w=pbW();w.boolAlways(2,active);return w.out();}
 function cmdRestore(){const w=pbW();w.boolAlways(3,true);return w.out();}
+function cmdResetStats(){const w=pbW();w.boolAlways(4,true);return w.out();}
 
 /* ======================= app state / API ============================ */
 let cfg=null, fxIndex=[];
@@ -963,11 +964,23 @@ async function loadSysinfo(){
     const si={pins:[]};
     const S={1:'chip',2:'fw',3:'compile',4:'sha',5:'idf',6:'mac_sta',7:'mac_ap',
       8:'mac_bt',11:'sta_ip',12:'ap_ip',15:'crash_log'};
+    const ST={1:'boots',2:'powered_15s',3:'wifi_15s',4:'brake',5:'left_uses',
+      6:'left_flashes',7:'right_uses',8:'right_flashes',9:'hazard_uses',
+      10:'hazard_flashes',11:'aux',12:'anomalies'};
     pbScan(u8,(f,v,s)=>{
       if(S[f]&&s)si[S[f]]=TDEC.decode(s);
       else if(f===9)si.heap_free=v;
       else if(f===10)si.heap_total=v;
       else if(f===13)si.uptime=v;
+      else if(f===16&&s){
+        const st={};
+        pbScan(s,(ff,vv,ss)=>{
+          if(ST[ff])st[ST[ff]]=vv;
+          else if(ff===13)st.not_stored=!!vv;
+          else if(ff===14&&ss)st.why=TDEC.decode(ss);
+        });
+        si.stats=st;
+      }
       else if(f===14&&s){
         const p={name:'',gpio:0,desc:''};
         pbScan(s,(ff,vv,ss)=>{
@@ -991,6 +1004,8 @@ async function loadSysinfo(){
       `<tr><td class="muted" style="width:150px">${r[0]}</td>`+
       `<td style="word-break:break-all">${esc(r[1]??'—')}</td></tr>`).join('');
 
+    renderStats(si.stats);
+
     document.querySelector('#pintable tbody').innerHTML=si.pins.map(p=>
       `<tr><td><b>${esc(p.name)}</b></td>`+
       `<td class="muted">G${p.gpio}</td>`+
@@ -998,6 +1013,43 @@ async function loadSysinfo(){
       '<tr><td colspan="3" class="muted">no pin information</td></tr>';
   }catch(e){toast('sysinfo: '+e,true);}
 }
+/* The module keeps its time counters in ticks of this many seconds — the
+ * cadence it writes them at. Mirrors StatsRecord::TICK_SECONDS. */
+const STATS_TICK_S=15;
+function fmtTicks(t){return fmtUptime((t||0)*STATS_TICK_S);}
+
+function renderStats(st){
+  const body=document.querySelector('#statstable tbody');
+  if(!st){body.innerHTML='<tr><td class="muted">no counters</td></tr>';
+    $('statsnote').textContent='';return;}
+  const rows=[
+    ['Brake',st.brake],
+    ['Left turn',`${st.left_uses||0} (${st.left_flashes||0} flashes)`],
+    ['Right turn',`${st.right_uses||0} (${st.right_flashes||0} flashes)`],
+    ['Hazards',`${st.hazard_uses||0} (${st.hazard_flashes||0} flashes)`],
+    ['Aux',st.aux],
+    ['Powered',fmtTicks(st.powered_15s)],
+    ['Config WiFi on',fmtTicks(st.wifi_15s)],
+    ['Power-ups',st.boots],
+  ];
+  body.innerHTML=rows.map(r=>
+    `<tr><td class="muted" style="width:150px">${r[0]}</td>`+
+    `<td>${esc(String(r[1]??0))}</td></tr>`).join('');
+  const note=[];
+  if(st.not_stored)note.push('Not being saved — '+(st.why||'unknown reason')+'.');
+  if(st.anomalies)note.push(st.anomalies+' stored record(s) were rejected as implausible and skipped.');
+  $('statsnote').textContent=note.join(' ');
+}
+
+$('statsreset').onclick=async()=>{
+  if(!confirm('Reset every ride counter to zero?'))return;
+  try{
+    await CMD(cmdResetStats());
+    await loadSysinfo();
+    toast('counters reset');
+  }catch(e){toast(e,true);}
+};
+
 $('sysrefresh').onclick=loadSysinfo;
 
 /* ---- firmware update ---- */

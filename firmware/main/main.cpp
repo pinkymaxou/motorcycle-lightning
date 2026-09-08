@@ -19,6 +19,7 @@
 #include "config_store.h"
 #include "input_conditioner.h"
 #include "crash_log.h"
+#include "stats.h"
 #include "esp_ota_ops.h"
 #include "led_driver.h"
 #include "render_core.h"
@@ -79,11 +80,12 @@ void onButtonHold()
  * crash log. The way back in when the access point's password is lost. */
 void factoryReset()
 {
-    ESP_LOGW(TAG, "button held %us — erasing NVS and rebooting",
+    ESP_LOGW(TAG, "button held %us — erasing NVS and the ride counters, rebooting",
              static_cast<unsigned>(UiButton::HOLD_FACTORY_MS / 1000));
     StatusLed::solid(FACTORY_ACK_RGB[0], FACTORY_ACK_RGB[1], FACTORY_ACK_RGB[2]);
     vTaskDelay(pdMS_TO_TICKS(FACTORY_ACK_MS));
     nvs_flash_erase();
+    Stats::factoryWipe();   /* a raw partition is untouched by nvs_flash_erase */
     esp_restart();
 }
 
@@ -100,6 +102,7 @@ void applyNetRequest(const NetRequest req, const char* source)
     }
     if (!want_on)
     {
+        Stats::flush(Stats::FLUSH_WAIT_MS);   /* the radio going down is a good moment to write */
         NetServices::stop();
         StatusLed::set(StatusLed::State::Running);
         ESP_LOGI(TAG, "%s: config WiFi OFF", source);
@@ -143,6 +146,22 @@ void onConsoleLine(const char* line)
             ESP_LOGI(TAG, "  %d: %s", i + 1, names[i]);
         }
     }
+    else if (0 == std::strcmp(line, "stats"))
+    {
+        ESP_LOGI(TAG, "%s", Stats::summary());
+    }
+    else if (0 == std::strcmp(line, "stats reset"))
+    {
+        const char* why = "";
+        if (Stats::reset(Stats::RESET_WAIT_MS, &why))
+        {
+            ESP_LOGI(TAG, "counters cleared");
+        }
+        else
+        {
+            ESP_LOGW(TAG, "counters not cleared: %s", why);
+        }
+    }
     else if (0 == std::strcmp(line, "crashlog clear"))
     {
         CrashLog::clear();
@@ -150,13 +169,14 @@ void onConsoleLine(const char* line)
     }
     else if (0 == std::strcmp(line, "reboot"))
     {
+        Stats::flush(Stats::FLUSH_WAIT_MS);
         ESP_LOGW(TAG, "rebooting on console request");
         esp_restart();
     }
     else
     {
         ESP_LOGI(TAG, "commands: wifi | wifi on | wifi off | crashlog"
-                      " | crashlog clear | reboot");
+                      " | crashlog clear | stats | stats reset | reboot");
     }
 }
 
@@ -269,6 +289,12 @@ extern "C" void app_main()
         cfg_fallback = true;
     }
 
+    /* 6b. ride counters. Deliberately after the render task: this reads
+     *     flash, and the boot budget belongs to the lighting. This task owns
+     *     them from here on; everyone else goes through a request. */
+    Stats::init();
+    ESP_LOGI(TAG, "counters: %s", Stats::summary());
+
     /* 7. network stays OFF at boot — riding needs no radio. The module
      *    button brings the config WiFi up on demand. */
     NetServices::setPinout(PINOUT, sizeof(PINOUT) / sizeof(PINOUT[0]));
@@ -364,5 +390,13 @@ extern "C" void app_main()
         {
             ConfigStore::saveBlinkPeriod(period);
         }
+
+        /* Ride counters. An erase stalls the strip, so the module only ever
+         * starts one while nothing is being signalled. */
+        CondState now;
+        InputConditioner::get(&now);
+        const bool quiet = !now.brake && !now.left_blink && !now.right_blink &&
+                           !now.aux;
+        Stats::tick(NetServices::running(), quiet);
     }
 }

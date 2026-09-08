@@ -1,8 +1,15 @@
 # 4 MB flash: two app slots so an update lands in the spare one and the
-# bootloader can roll back. Nothing mounts a filesystem; the tail is free.
+# bootloader can roll back. Nothing mounts a filesystem.
+#
+# The ride counters sit at a PINNED offset, flush against the end of the chip.
+# ota_1 has no offset of its own, so anything appended after it would inherit a
+# computed address — and the next time the app slots grow, every module in the
+# field would silently lose its history. 0x320000 to 0x3FE000 stays free for
+# that growth.
 # Name,     Type, SubType, Offset,   Size
 nvs,        data, nvs,     0x9000,   24K
 otadata,    data, ota,     0xF000,   8K
 phy_init,   data, phy,     0x11000,  4K
 ota_0,      app,  ota_0,   0x20000,  1536K
 ota_1,      app,  ota_1,   ,         1536K
+stats,      data, undefined, 0x3FE000, 8K

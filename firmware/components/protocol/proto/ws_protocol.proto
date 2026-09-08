@@ -155,6 +155,29 @@ message SysInfo {
   uint32 uptime_s     = 13;
   repeated PinInfo pins = 14;
   string crash_log    = 15;   // "no unexpected reset" / "2 unexpected resets, last: ..."
+  RideStats stats     = 16;
+}
+
+// What the bike has asked of the module, kept across a power cut. A "use" is
+// one switch-on of an indicator; a "flash" is one on/off cycle. An episode
+// that was ever part of a hazard counts only as hazard.
+message RideStats {
+  uint32 boots          = 1;
+  uint32 powered_15s    = 2;
+  uint32 wifi_15s       = 3;
+  uint32 brake          = 4;
+  uint32 left_uses      = 5;
+  uint32 left_flashes   = 6;
+  uint32 right_uses     = 7;
+  uint32 right_flashes  = 8;
+  uint32 hazard_uses    = 9;
+  uint32 hazard_flashes = 10;
+  uint32 aux            = 11;
+  uint32 anomalies      = 12;
+  // Inverted: proto3 omits false, and "not stored" is the exceptional state
+  // worth carrying on the wire.
+  bool   not_stored     = 13;
+  string not_stored_why = 14;
 }
 
 message TestCmd {
@@ -167,5 +190,6 @@ message Command {
     TestCmd test            = 1;
     bool    override        = 2;
     bool    restore_defaults = 3;
+    bool    reset_stats     = 4;
   }
 }

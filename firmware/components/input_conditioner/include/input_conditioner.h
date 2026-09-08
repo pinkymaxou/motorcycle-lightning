@@ -3,6 +3,7 @@
 #pragma once
 
 #include "esp_err.h"
+#include "blinker.h"
 #include "cond_state.h"
 
 namespace InputConditioner
@@ -18,6 +19,11 @@ esp_err_t init(const InputPins& pins, uint32_t stored_period_ms,
                uint8_t exit_x10);
 
 void get(CondState* out);
+
+/* What the bike has asked for since boot. Every tally only grows and the
+ * stats module takes deltas per tally, so nothing is double-counted or
+ * dropped even if the words straddle a sampler tick. */
+void eventCounts(Blink::EventCounts* out);
 
 /* True once when a newly learned period should be persisted; clears the flag
  * and returns the value. Call from a low-priority context (NVS write). */

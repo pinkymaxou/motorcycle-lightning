@@ -77,8 +77,9 @@ void learnPeriod(BlinkSystem* s, const uint32_t interval_ms)
     }
 }
 
-void turnTick(BlinkSystem* s, BlinkChannel* c, const bool raw,
-              const uint32_t now_ms)
+/* Returns the debounced edge: +1 on OFF->ON, -1 on ON->OFF, 0 otherwise. */
+int turnTick(BlinkSystem* s, BlinkChannel* c, const bool raw,
+             const uint32_t now_ms)
 {
     const int edge = debounce(c, raw);
 
@@ -116,6 +117,27 @@ void turnTick(BlinkSystem* s, BlinkChannel* c, const bool raw,
             c->blink_mode = false;
         }
     }
+
+    return edge;
+}
+
+/* A switch-on is held for HAZARD_JOIN_MS in case the other side joins and
+ * makes it a hazard. Past that, or once the channel has stopped, it is a turn
+ * on its own side: one use and the flash that started it. */
+void settleTurnCredit(BlinkChannel* c, const uint32_t now_ms,
+                      uint32_t* uses, uint32_t* flashes)
+{
+    if (!c->credit_pending)
+    {
+        return;
+    }
+    if (c->blink_mode && now_ms - c->pending_since_ms < HAZARD_JOIN_MS)
+    {
+        return;
+    }
+    c->credit_pending = false;
+    (*uses)++;
+    (*flashes)++;
 }
 
 } // namespace
@@ -140,8 +162,69 @@ void init(BlinkSystem* s, const uint32_t stored_period_ms, const uint8_t exit_x1
 void tick(BlinkSystem* s, const bool raw_left, const bool raw_right,
           const bool raw_brake, const bool raw_aux, const uint32_t now_ms)
 {
-    turnTick(s, &s->left, raw_left, now_ms);
-    turnTick(s, &s->right, raw_right, now_ms);
+    const bool left_was_blinking = s->left.blink_mode;
+    const bool right_was_blinking = s->right.blink_mode;
+    const int left_edge = turnTick(s, &s->left, raw_left, now_ms);
+    const int right_edge = turnTick(s, &s->right, raw_right, now_ms);
+
+    /* A switch-on is not credited to a side yet: the other side may be about
+     * to join and make it a hazard. */
+    if (!left_was_blinking && s->left.blink_mode)
+    {
+        s->left.credit_pending = true;
+        s->left.pending_since_ms = now_ms;
+    }
+    if (!right_was_blinking && s->right.blink_mode)
+    {
+        s->right.credit_pending = true;
+        s->right.pending_since_ms = now_ms;
+    }
+
+    /* Hazard is both channels blinking at once. The switch-on that forms the
+     * pair is one hazard use and one hazard flash — whether both sides came
+     * on together or one joined a turn already running. Whatever either side
+     * was still holding is absorbed into it, so a hazard from rest is never
+     * also a left and a right. */
+    const bool pair = s->left.blink_mode && s->right.blink_mode;
+    const bool pair_formed = pair && !s->hazard_active;
+    if (pair_formed)
+    {
+        s->counts.hazard_uses++;
+        s->counts.hazard_flashes++;
+        s->left.credit_pending = false;
+        s->right.credit_pending = false;
+    }
+    s->hazard_active = pair;
+
+    settleTurnCredit(&s->left, now_ms, &s->counts.left_uses, &s->counts.left_flashes);
+    settleTurnCredit(&s->right, now_ms, &s->counts.right_uses, &s->counts.right_flashes);
+
+    /* Every later ON edge is one flash. During a hazard only the channel that
+     * started first counts, so a synchronised pair counts once — and it is
+     * the channel the strip itself follows. */
+    if (pair)
+    {
+        if (!pair_formed)
+        {
+            const bool master_left = static_cast<int32_t>(
+                s->left.blink_start_ms - s->right.blink_start_ms) <= 0;
+            if ((master_left ? left_edge : right_edge) > 0)
+            {
+                s->counts.hazard_flashes++;
+            }
+        }
+    }
+    else
+    {
+        if (left_edge > 0 && !s->left.credit_pending && left_was_blinking)
+        {
+            s->counts.left_flashes++;
+        }
+        if (right_edge > 0 && !s->right.credit_pending && right_was_blinking)
+        {
+            s->counts.right_flashes++;
+        }
+    }
 
     const int brake_edge = debounce(&s->brake, raw_brake);
     if (0 != brake_edge)
@@ -150,6 +233,7 @@ void tick(BlinkSystem* s, const bool raw_left, const bool raw_right,
     }
     if (brake_edge > 0)
     {
+        s->counts.brake++;
         /* replay the intro only after a long enough release */
         s->brake_intro = !s->brake_seen ||
             (now_ms - s->brake_off_edge_ms >= s->brake_holdoff_ms);
@@ -160,9 +244,14 @@ void tick(BlinkSystem* s, const bool raw_left, const bool raw_right,
         s->brake_off_edge_ms = now_ms;
     }
 
-    if (0 != debounce(&s->aux, raw_aux))
+    const int aux_edge = debounce(&s->aux, raw_aux);
+    if (0 != aux_edge)
     {
         s->aux.last_phase_edge_ms = now_ms;
+    }
+    if (aux_edge > 0)
+    {
+        s->counts.aux++;
     }
 }
 
