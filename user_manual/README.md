@@ -150,8 +150,18 @@ apart.
 | Turn ON sweep | the turn colour sweeps across the section |
 | Turn off-phase (low red) | what a blinking section shows between flashes |
 | Full white | steady white |
+| Strobe 10 Hz white | white flashing ten times a second, hard on and hard off |
 | Knight Rider | a red eye sweeping the section and back, trailing a glow |
 | Off (dark) | paints black |
+
+**About the strobe.** It blanks the section between flashes rather than
+dimming it, so nothing underneath softens it. Ten flashes a second is
+deliberately attention-grabbing, which also makes it the one effect worth
+thinking about before you assign it: a white strobe on a moving vehicle is
+what emergency services use, and most road codes reserve it for them. Check
+what your own rules allow before riding with it. It is also in the flash rate
+that can trigger photosensitive seizures, so it is a poor choice for anything
+a following driver stares at for long.
 
 ### Strip hardware
 

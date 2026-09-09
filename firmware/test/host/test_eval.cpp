@@ -3,6 +3,7 @@
 #include <cstring>
 
 #include "effect_eval.h"
+#include "factory_effects.h"
 
 namespace
 {
@@ -184,6 +185,55 @@ void testBlendOver()
     CHECK(5 == dst[7]);                     /* 10*(127)/255 ~ 5 */
 }
 
+/* A palette with an unmistakable value per slot, so a test can tell which
+ * palette entry an effect actually reached for. */
+Fx::FxPalette probePalette()
+{
+    Fx::FxPalette p = {};
+    for (int i = 0; i < Fx::COLOR_COUNT; i++)
+    {
+        p.colors[i] = Fx::defaultColor(static_cast<Fx::FxColor>(i));
+    }
+    return p;
+}
+
+void testStrobeIsTenHertz()
+{
+    FxEffect fx = {};
+    CHECK(Fx::factoryBuild("f_strobe", probePalette(), &fx));
+
+    /* 10 Hz is the whole point of the effect, so it is pinned here rather
+     * than left to whoever next edits the step table. */
+    CHECK(100 == fx.total_ms);
+    CHECK(2 == fx.n_steps);
+    CHECK(0 == fx.loop_from);   /* runs for as long as the event lasts */
+
+    const Fx::RgbaColor white = Fx::defaultColor(Fx::FxColor::White);
+    RgbaColor out[8];
+    auto lit = [&](const uint32_t t) {
+        Fx::evaluate(&fx, t, 8, false, out);
+        return out[0];
+    };
+
+    /* First half lit, second half dark, and the dark half is opaque so the
+     * layers below cannot show through and soften it into a flicker. */
+    CHECK(white.r == lit(0).r && white.g == lit(0).g && white.b == lit(0).b);
+    CHECK(255 == lit(0).a);
+    CHECK(white.r == lit(49).r);
+    CHECK(0 == lit(50).r && 0 == lit(50).g && 0 == lit(50).b);
+    CHECK(255 == lit(50).a);
+    CHECK(0 == lit(99).r);
+
+    /* Every period thereafter lands the same way: the timeline wraps on the
+     * clock, so a long hazard cannot drift off the beat. */
+    for (uint32_t period = 1; period < 600; period++)
+    {
+        const uint32_t base = period * 100;
+        CHECK(white.r == lit(base).r);
+        CHECK(0 == lit(base + 50).r);
+    }
+}
+
 void testFinalizeRejects()
 {
     FxEffect fx = {};
@@ -211,6 +261,7 @@ int main()
     testOneShotHold();
     testBlendOver();
     testFinalizeRejects();
+    testStrobeIsTenHertz();
 
     if (0 != g_fail)
     {

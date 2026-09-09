@@ -18,6 +18,7 @@ g++ $CXXFLAGS -I$ROOT/components/stats/include \
 
 g++ $CXXFLAGS -I$ROOT/components/fx/include \
     test_eval.cpp $ROOT/components/fx/effect_eval.cpp \
+    $ROOT/components/fx/factory_effects.cpp \
     -o build/test_eval
 
 g++ $CXXFLAGS -I$ROOT/components/fx/include \
