@@ -312,7 +312,12 @@ WiFi — no cable, no opening the box.
 1. Bring the config WiFi up and open the page.
 2. **System → Firmware update**, choose the `.bin`, press **Upload & reboot**.
 3. Watch the bar; roughly 900 KB takes a few seconds. The module verifies the
-   image, reboots into it, and the page reloads by itself.
+   image and reboots into it.
+4. The page goes quiet at that point, because the config WiFi is off after a
+   reboot like after any restart. Bring it back the usual way — the module
+   button, or brake and hazards together within six seconds of switching the
+   ignition on — and check the firmware line on the System tab to see the new
+   version.
 
 The flash holds **two** firmware slots. An update is written to the spare one,
 so the firmware you are running is never overwritten while it runs. The new
