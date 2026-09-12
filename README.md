@@ -2,6 +2,12 @@
 
 [![build](https://github.com/pinkymaxou/motorcycle-lightning/actions/workflows/build.yml/badge.svg)](https://github.com/pinkymaxou/motorcycle-lightning/actions/workflows/build.yml)
 
+**[Download the latest firmware](https://github.com/pinkymaxou/motorcycle-lightning/releases/download/latest/motorcycle_lightning.bin)**
+— built from master by CI, ready to hand to the module's own update page. The
+[release](https://github.com/pinkymaxou/motorcycle-lightning/releases/tag/latest)
+also carries the bootloader and partition table for the one cable flash a
+module needs before its ride counters can be saved.
+
 Motorcycle turn signal and brake effects on a WS2812B strip, driven by an
 ESP32 (M5Stamp Pico) on a custom opto-isolated interface PCB (see `pcb/`).
 
