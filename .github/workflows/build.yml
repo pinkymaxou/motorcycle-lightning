@@ -73,8 +73,76 @@ jobs:
             firmware/build/motorcycle_lightning.map
             firmware/build/bootloader/bootloader.bin
             firmware/build/partition_table/partition-table.bin
+            firmware/build/ota_data_initial.bin
           if-no-files-found: error
           retention-days: 30
+
+  # Artifacts are zipped, expire, and need a GitHub login. A release asset is
+  # a plain file on a stable URL that a phone can fetch, which is what the
+  # module's own update page wants handed to it:
+  #
+  #   https://github.com/pinkymaxou/motorcycle-lightning/releases/download/latest/motorcycle_lightning.bin
+  #
+  # `latest` is a tag this job moves on every push to master, so that URL is
+  # always the newest build. Pushing a v* tag publishes a permanent release
+  # beside it instead of touching the moving one.
+  release:
+    name: downloadable binaries
+    needs: firmware
+    if: github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    # The default token is read-only in repositories that ask for it; this is
+    # the one job that writes back.
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: firmware
+          path: dist
+
+      # The artifact keeps the build tree's shape. A release asset is flat,
+      # and its name is the whole of its identity once downloaded.
+      - name: Collect what actually gets flashed
+        shell: bash
+        run: |
+          set -eux
+          mkdir -p out
+          cp dist/motorcycle_lightning.bin out/
+          cp dist/bootloader/bootloader.bin out/
+          cp dist/partition_table/partition-table.bin out/
+          cp dist/ota_data_initial.bin out/
+          ls -l out
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'latest' }}
+          name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'Latest build from master' }}
+          body: |
+            Built from ${{ github.sha }}.
+
+            **Over WiFi — the usual way.** Download `motorcycle_lightning.bin`,
+            bring the module's config WiFi up, then **System → Firmware
+            update**. The module verifies the image, reboots into it, and
+            falls back to the previous firmware by itself if the new one
+            fails to come up.
+
+            **Over a cable — needed once per module**, to lay down the
+            partition table the ride counters live in. A module that has only
+            ever been updated over WiFi reports its counters as *not being
+            saved* until this is done once:
+
+            ```
+            esptool --chip esp32 write-flash \
+              0x1000  bootloader.bin \
+              0x8000  partition-table.bin \
+              0xf000  ota_data_initial.bin \
+              0x20000 motorcycle_lightning.bin
+            ```
+
+            Settings, WiFi credentials and ride counters survive both routes.
+          files: out/*
+          fail_on_unmatched_files: true
 
   page:
     name: page runtime + user manual
