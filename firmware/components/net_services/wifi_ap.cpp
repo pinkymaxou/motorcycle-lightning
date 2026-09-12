@@ -7,6 +7,7 @@
 #include "esp_netif.h"
 #include "esp_event.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 
 namespace NetServices
 {
@@ -18,13 +19,27 @@ const char* const TAG = "wifi";
 
 /* SoftAP identity — page always reachable at http://192.168.4.1 */
 /* Used when the configuration names no access point of its own, so a module
- * that was never configured (or was just reset) always has a way in. */
+ * that was never configured (or was just reset) always has a way in. The
+ */
 constexpr const char* AP_SSID_DEFAULT = "MotoLights";
 constexpr const char* AP_PASS_DEFAULT = "motolights";
 
 static const char* m_ap_ssid = AP_SSID_DEFAULT;
 constexpr uint8_t AP_CHANNEL = 6;    /* follows the STA channel when joined */
 constexpr uint8_t AP_MAX_STA = 4;
+
+/* Rejoining the home network backs off instead of retrying flat out. The AP
+ * and the STA share one radio, and every join attempt scans every channel —
+ * time the SoftAP is not on the air. Out of range, an immediate retry (which
+ * is what this did) leaves the radio scanning back to back and the page
+ * unreachable at exactly the moment it is the only way in. The delay doubles
+ * from a couple of seconds to half a minute, so a brief drop is recovered
+ * quickly while a network that is simply gone costs a scan every 30 s. */
+constexpr uint32_t STA_RETRY_FIRST_MS = 2000;
+constexpr uint32_t STA_RETRY_MAX_MS = 30000;
+
+static esp_timer_handle_t m_sta_retry_timer;
+static uint32_t m_sta_retry_ms = STA_RETRY_FIRST_MS;
 
 static bool m_netif_ready;
 static esp_netif_t* m_ap_netif;
@@ -33,6 +48,51 @@ static bool m_wifi_running;
 static bool m_sta_enabled;
 static bool m_sta_connected;
 static char m_sta_ip[16];
+
+void staRetryCb(void*)
+{
+    /* Re-checked here, not only when the timer was armed: the radio may have
+     * been stopped or the STA switched off while this was pending. */
+    if (m_wifi_running && m_sta_enabled && !m_sta_connected)
+    {
+        esp_wifi_connect();
+    }
+}
+
+void cancelStaRetry()
+{
+    if (nullptr != m_sta_retry_timer)
+    {
+        esp_timer_stop(m_sta_retry_timer);
+    }
+    m_sta_retry_ms = STA_RETRY_FIRST_MS;
+}
+
+void scheduleStaRetry()
+{
+    if (nullptr == m_sta_retry_timer)
+    {
+        const esp_timer_create_args_t args = { staRetryCb, nullptr,
+                                               ESP_TIMER_TASK, "sta_retry",
+                                               false };
+        if (ESP_OK != esp_timer_create(&args, &m_sta_retry_timer))
+        {
+            /* No timer, no rejoin: the SoftAP stays usable, which is the
+             * half that matters. Say so once rather than fall back to the
+             * hammering this exists to prevent. */
+            ESP_LOGE(TAG, "no retry timer: STA will not rejoin by itself");
+            return;
+        }
+    }
+    esp_timer_stop(m_sta_retry_timer);
+    ESP_LOGW(TAG, "STA down, retrying in %u s",
+             static_cast<unsigned>(m_sta_retry_ms / 1000));
+    esp_timer_start_once(m_sta_retry_timer,
+                         static_cast<uint64_t>(m_sta_retry_ms) * 1000);
+    m_sta_retry_ms = (m_sta_retry_ms * 2 > STA_RETRY_MAX_MS)
+                         ? STA_RETRY_MAX_MS
+                         : m_sta_retry_ms * 2;
+}
 
 void wifiEventCb(void* arg, esp_event_base_t base, int32_t id, void* data)
 {
@@ -49,8 +109,7 @@ void wifiEventCb(void* arg, esp_event_base_t base, int32_t id, void* data)
             m_sta_ip[0] = '\0';
             if (m_wifi_running && m_sta_enabled)
             {
-                ESP_LOGW(TAG, "STA disconnected, retrying");
-                esp_wifi_connect();
+                scheduleStaRetry();
             }
             break;
         default:
@@ -63,6 +122,7 @@ void wifiEventCb(void* arg, esp_event_base_t base, int32_t id, void* data)
             static_cast<const ip_event_got_ip_t*>(data);
         snprintf(m_sta_ip, sizeof(m_sta_ip), IPSTR, IP2STR(&ev->ip_info.ip));
         m_sta_connected = true;
+        cancelStaRetry();   /* joined: the next drop starts short again */
         ESP_LOGI(TAG, "STA got IP: %s — config page also at http://%s",
                  m_sta_ip, m_sta_ip);
     }
@@ -195,6 +255,7 @@ esp_err_t wifiReconfigureSta(const char* ssid, const char* pass,
     m_sta_enabled = enable;
     m_sta_connected = false;
     m_sta_ip[0] = '\0';
+    cancelStaRetry();
 
     if (enable)
     {
@@ -229,6 +290,7 @@ esp_err_t wifiStop()
     m_wifi_running = false;
     m_sta_connected = false;
     m_sta_ip[0] = '\0';
+    cancelStaRetry();
     esp_wifi_stop();
     esp_wifi_deinit();
     return ESP_OK;
