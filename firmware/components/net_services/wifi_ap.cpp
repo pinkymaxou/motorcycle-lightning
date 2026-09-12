@@ -20,9 +20,13 @@ const char* const TAG = "wifi";
 /* SoftAP identity — page always reachable at http://192.168.4.1 */
 /* Used when the configuration names no access point of its own, so a module
  * that was never configured (or was just reset) always has a way in. The
- */
+ * factory network is OPEN: the radio is off at every boot and only a
+ * deliberate button press or the brake+hazard combination brings it up, so a
+ * password here guards a door that is shut unless its owner opens it, and
+ * costs a lockout for anyone who mistypes it. A named access point still
+ * requires one — see CFG_AP_PASS_MIN. */
 constexpr const char* AP_SSID_DEFAULT = "MotoLights";
-constexpr const char* AP_PASS_DEFAULT = "motolights";
+constexpr const char* AP_PASS_DEFAULT = "";
 
 static const char* m_ap_ssid = AP_SSID_DEFAULT;
 constexpr uint8_t AP_CHANNEL = 6;    /* follows the STA channel when joined */
@@ -205,7 +209,8 @@ esp_err_t wifiStart(const char* ap_ssid, const char* ap_pass,
             sizeof(ap_cfg.ap.password));
     ap_cfg.ap.channel = AP_CHANNEL;
     ap_cfg.ap.max_connection = AP_MAX_STA;
-    ap_cfg.ap.authmode = WIFI_AUTH_WPA2_PSK;
+    ap_cfg.ap.authmode = ('\0' != pass[0]) ? WIFI_AUTH_WPA2_PSK
+                                           : WIFI_AUTH_OPEN;
     ap_cfg.ap.pmf_cfg.required = false;
 
     err = esp_wifi_set_mode(m_sta_enabled ? WIFI_MODE_APSTA : WIFI_MODE_AP);

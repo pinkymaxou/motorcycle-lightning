@@ -212,11 +212,20 @@ reaches the module until you press **Save**, so you can look it over first.
 ### The module's access point
 
 This is the network you join to reach this page. Leave the SSID blank and it
-stays the factory one — **MotoLights**, password **motolights**. Name it
-yourself and it needs a password of at least eight characters; the module
-refuses anything shorter, because an access point that fails to start is an
-access point you cannot reach. The change takes effect the next time the
-config WiFi comes up.
+stays the factory one, **MotoLights**, with **no password**. That is
+deliberate: the radio is off at every boot and only comes up when you press
+the module button or hold brake and hazards together, so the network exists
+only while you are standing there having asked for it. A password on it would
+guard a door that is already shut, and would be one more thing to have
+forgotten at the roadside.
+
+While it is up, anyone in range can open the page, change the lighting and
+send firmware to the module. That window is yours to open and close, and it
+closes by itself at the next restart. If you would rather it were shut to
+everyone else, name the network: a named one needs a password of at least
+eight characters, and the module refuses anything shorter, because an access
+point that fails to start is an access point you cannot reach. Either change
+takes effect the next time the config WiFi comes up.
 
 **Locked yourself out?** Hold the module button for 15 seconds. The status LED
 turns fuchsia for a second, and the module erases everything it remembers —
