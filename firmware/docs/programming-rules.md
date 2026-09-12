@@ -15,10 +15,11 @@ House rules for this codebase. They exist because each one was earned.
    Never merge simulated state further down.
 3. **Pure, host-testable cores.** Decision logic (`blinker.cpp`,
    `effect_eval.cpp`, `event_arbiter.cpp`, `config_rules.cpp`,
-   `config_proto.cpp`) has zero ESP-IDF dependencies and compiles on the
-   host; `test/host/run_tests.sh` covers the blinker, the effect evaluator,
-   the arbiter and the config codec. A behaviour rule that lives in one of
-   those files gets a host test. ESP-specific code is a thin wrapper.
+   `config_proto.cpp`, `stats_record.cpp`, `stats_store.cpp`) has zero
+   ESP-IDF dependencies and compiles on the host; `test/host/run_tests.sh`
+   covers the blinker, the counter store, the effect evaluator, the arbiter
+   and the config codec. A behaviour rule that lives in one of those files
+   gets a host test. ESP-specific code is a thin wrapper.
 4. **Safety first, always — and fail dark, never wrong.** The strips are
    latched black before anything else runs, and the boot order lights them
    from compiled-in fallback effects before storage or network are touched.

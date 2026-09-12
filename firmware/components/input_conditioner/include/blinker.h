@@ -28,6 +28,34 @@ constexpr uint32_t PERIOD_MAX_MS = 3000;
 constexpr uint32_t BRAKE_HOLDOFF_MS = 25000;
 /* Default blink-mode exit factor x10: period + 20% grace for the next flash. */
 constexpr uint8_t  EXIT_X10_DEFAULT = 12;
+/* A switch-on is credited to its own side only once this long has passed
+ * without the other side joining: a hazard relay drives both lamps from one
+ * contact, so their debounced edges land within a few milliseconds. */
+constexpr uint32_t HAZARD_JOIN_MS = 150;
+
+/* What the bike asked for, counted at the one place the true edges are
+ * already known. A "use" is one switch-on of an indicator; a "flash" is one
+ * on/off cycle. Both are credited as they happen, never held back to the end
+ * of an episode: a tally that only lands when a signal stops is lost when the
+ * ignition is cut first, and it lands in one lump that no rate check can
+ * tell from corruption.
+ *
+ * Hazard is both channels blinking at once. The switch-on that forms the pair
+ * is one hazard use, and while the pair lasts its flashes are hazard flashes,
+ * taken from the channel that started first — the same channel the strip
+ * follows. A turn that was already running when the hazards came on keeps
+ * the use and flashes it had earned; only what follows is hazard. */
+struct EventCounts
+{
+    uint32_t brake;
+    uint32_t left_uses;
+    uint32_t left_flashes;
+    uint32_t right_uses;
+    uint32_t right_flashes;
+    uint32_t hazard_uses;
+    uint32_t hazard_flashes;
+    uint32_t aux;
+};
 
 struct BlinkChannel
 {
@@ -40,6 +68,9 @@ struct BlinkChannel
     uint32_t blink_start_ms;      /* when blink mode was entered (hazard sync) */
     uint32_t last_on_edge_ms;     /* last debounced OFF->ON edge */
     uint32_t last_phase_edge_ms;  /* last debounced toggle (drives effect t0) */
+    /* a switch-on whose side is not yet known (turn, or half of a hazard) */
+    bool     credit_pending;
+    uint32_t pending_since_ms;
 };
 
 struct BlinkSystem
@@ -59,6 +90,9 @@ struct BlinkSystem
     uint32_t pending_ms;          /* last measured interval */
     uint8_t  consist;             /* consecutive consistent measurements */
     uint8_t  exit_x10;            /* exit factor x10 (12 = period + 20%) */
+    /* event counting */
+    EventCounts counts;
+    bool     hazard_active;       /* both channels in blink mode right now */
 };
 
 /* stored_period_ms: persisted value from NVS, or 0 if never learned. */

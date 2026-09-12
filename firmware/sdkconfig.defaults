@@ -88,3 +88,12 @@ CONFIG_RMT_ISR_IRAM_SAFE=y
 # back to the previous slot unless the app marks itself valid, which main.cpp
 # only does once the boot sequence completed and the strips are lit.
 CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
+
+# The module is specified down to 3.0 V and its flash to 2.7 V, but the default
+# brownout trip is 2.43 V — a band where the CPU still clocks the flash out of
+# spec, which is how a power cut turns into half-programmed cells rather than
+# a clean stop. Level 4 trips at 2.67 V ± 0.05: it narrows that band, it does
+# not close it (only level 7, 2.80 V, sits fully above the flash minimum).
+# Chosen as the first step; raise it once a soak with both strips at full
+# white and WiFi on has shown no spurious resets.
+CONFIG_ESP_BROWNOUT_DET_LVL_SEL_4=y

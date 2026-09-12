@@ -150,8 +150,18 @@ apart.
 | Turn ON sweep | the turn colour sweeps across the section |
 | Turn off-phase (low red) | what a blinking section shows between flashes |
 | Full white | steady white |
+| Strobe 10 Hz white | white flashing ten times a second, hard on and hard off |
 | Knight Rider | a red eye sweeping the section and back, trailing a glow |
 | Off (dark) | paints black |
+
+**About the strobe.** It blanks the section between flashes rather than
+dimming it, so nothing underneath softens it. Ten flashes a second is
+deliberately attention-grabbing, which also makes it the one effect worth
+thinking about before you assign it: a white strobe on a moving vehicle is
+what emergency services use, and most road codes reserve it for them. Check
+what your own rules allow before riding with it. It is also in the flash rate
+that can trigger photosensitive seizures, so it is a poor choice for anything
+a following driver stares at for long.
 
 ### Strip hardware
 
@@ -202,16 +212,26 @@ reaches the module until you press **Save**, so you can look it over first.
 ### The module's access point
 
 This is the network you join to reach this page. Leave the SSID blank and it
-stays the factory one — **MotoLights**, password **motolights**. Name it
-yourself and it needs a password of at least eight characters; the module
-refuses anything shorter, because an access point that fails to start is an
-access point you cannot reach. The change takes effect the next time the
-config WiFi comes up.
+stays the factory one, **MotoLights**, with **no password**. That is
+deliberate: the radio is off at every boot and only comes up when you press
+the module button or hold brake and hazards together, so the network exists
+only while you are standing there having asked for it. A password on it would
+guard a door that is already shut, and would be one more thing to have
+forgotten at the roadside.
+
+While it is up, anyone in range can open the page, change the lighting and
+send firmware to the module. That window is yours to open and close, and it
+closes by itself at the next restart. If you would rather it were shut to
+everyone else, name the network: a named one needs a password of at least
+eight characters, and the module refuses anything shorter, because an access
+point that fails to start is an access point you cannot reach. Either change
+takes effect the next time the config WiFi comes up.
 
 **Locked yourself out?** Hold the module button for 15 seconds. The status LED
 turns fuchsia for a second, and the module erases everything it remembers —
-configuration, access point, learned flasher period — and comes back on
-factory settings.
+configuration, access point, learned flasher period, ride counters — and
+comes back on factory settings. **Restore defaults** on the Setup tab, by
+contrast, leaves the counters alone; they have their own reset button.
 
 ### Your home network
 
@@ -243,6 +263,54 @@ resets it did not ask for (a crash or a watchdog reboot) in flash. Losing
 power is not a crash and is never counted, so anything other than *no
 unexpected reset* here is worth reporting.
 
+### Ride counters
+
+Below that, a tally of what the bike has asked of the module. It survives
+losing power, so it adds up across every ride.
+
+| Row | What it counts |
+|---|---|
+| Brake | one per brake press |
+| Left turn / Right turn | one **use** each time that indicator was switched on, and the flashes it ran |
+| Hazards | one use each time the hazards ran, and their flashes |
+| Aux | one per AUX switch-on |
+| Powered | how long the module has had power, all rides together |
+| Config WiFi on | how much of that time the page was reachable |
+| Power-ups | how many times the ignition has brought it up |
+
+A **use** is one switch-on. A **flash** is one on/off cycle. Both are counted
+as they happen, so a signal still running when you switch the ignition off is
+already on the books. A hazard is a hazard, never a left plus a right: the
+switch-on that lights both sides is one hazard use, and every flash while both
+sides run is a hazard flash. If you were already signalling left when the
+hazards came on, that left turn keeps the use and flashes it had earned, and
+everything from then on is hazard.
+
+Signals you inject yourself from the Simulate tab are counted too — they are,
+after all, things the module did. While **Override real inputs** is on, the
+bike's own signals are not seen, so they are not counted either.
+
+**Reset counters** puts every one of them back to zero. The module does it
+the moment nothing is being signalled; if you press it mid-signal it waits a
+few seconds, then asks you to try again.
+
+The counters are written down every 15 seconds, into two areas of flash used
+in turn, so cutting the ignition part way through a write costs at most those
+15 seconds and can never leave a wrong number behind. A power-up that lasts
+less than 15 seconds is not written down at all, so it does not show in
+**Power-ups**. Roughly every quarter hour the module tidies that storage,
+which holds the strip's picture still for a fraction of a second. It waits for
+a moment when nothing is being signalled, so it never happens while you are
+braking or indicating.
+
+If the row block says the counters are **not being saved**, the module is
+still counting but only in memory. The usual reason is a firmware update done
+over WiFi, which cannot add the storage area — see below. It can also say it
+is **waiting for the signals to stop**: the storage is full and the module
+has not had a quiet moment to make room, which happens when an input stays on
+for a long stretch, such as an AUX line wired to running lights. Nothing is
+lost while the power holds; the counts are written the moment it is quiet.
+
 ---
 
 ## 8. Updating the firmware
@@ -253,7 +321,12 @@ WiFi — no cable, no opening the box.
 1. Bring the config WiFi up and open the page.
 2. **System → Firmware update**, choose the `.bin`, press **Upload & reboot**.
 3. Watch the bar; roughly 900 KB takes a few seconds. The module verifies the
-   image, reboots into it, and the page reloads by itself.
+   image and reboots into it.
+4. The page goes quiet at that point, because the config WiFi is off after a
+   reboot like after any restart. Bring it back the usual way — the module
+   button, or brake and hazards together within six seconds of switching the
+   ignition on — and check the firmware line on the System tab to see the new
+   version.
 
 The flash holds **two** firmware slots. An update is written to the spare one,
 so the firmware you are running is never overwritten while it runs. The new
@@ -265,6 +338,11 @@ The strips may glitch or sit still while the flash is being written; that is
 expected, and the module reboots dark either way. Note that the config WiFi is
 off again after the reboot, as after any restart — press the button to get the
 page back.
+
+An update over WiFi replaces the firmware and nothing else. It cannot change
+how the flash is divided up, so a module that has never been programmed with a
+cable since the ride counters were added will say they are **not being saved**.
+One update over the cable fixes that for good and keeps everything else.
 
 ---
 
@@ -305,11 +383,14 @@ the module — and it comes back dark rather than frozen on half a frame.
 | Animation runs the wrong way | flip the section's **Direction**, or the strip's **reversed data direction** if the whole bar is mirrored |
 | Blinking out of step with the bike | let it blink a few times so the period gets learned; the Simulate tab shows the learned value next to the real inputs |
 | `Unexpected resets` is not zero | the module crashed or was rebooted by its watchdog — note the reason and report it |
+| Ride counters say `not being saved` | the firmware was last updated over WiFi; flash it once with a cable |
+| Ride counters lost the last few seconds after a power cut | expected — they are written every 15 s, and losing the last one is the price of never storing a wrong number |
 | Firmware update refused | the file is not a MotoLights image, or it is not an ESP32 application at all — the message says which |
 | The module came back on the old firmware after an update | the new image failed its first boot and the module rolled itself back |
 
 A serial console is available at 921600 baud with a few commands: `wifi`,
-`wifi on`, `wifi off`, `crashlog`, `crashlog clear`, `reboot`.
+`wifi on`, `wifi off`, `crashlog`, `crashlog clear`, `stats`, `stats reset`,
+`reboot`.
 
 ---
 

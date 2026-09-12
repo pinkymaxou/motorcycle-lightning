@@ -6,7 +6,7 @@ idf_component_register(
     INCLUDE_DIRS "include"
     PRIV_INCLUDE_DIRS "."
     REQUIRES config_store
-    PRIV_REQUIRES tasks crash_log protocol nanopb lwip
+    PRIV_REQUIRES tasks crash_log stats protocol nanopb lwip
                   esp_wifi esp_netif esp_event esp_http_server
                   render_core fx input_conditioner status_led esp_timer esp_app_format
                   app_update

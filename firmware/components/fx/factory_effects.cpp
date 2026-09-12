@@ -126,6 +126,17 @@ const EffectDef FACTORY[] = {
 
     { "f_white", "Full white", 0, 1, { fill(1000, pal(FxColor::White)) } },
 
+    /* 10 Hz: 50 ms lit, 50 ms dark, forever. The dark half is opaque black
+     * rather than transparent, because a strobe is its contrast — a
+     * transparent gap would let the position light below show through and
+     * turn it into a flicker. At the ~77 Hz frame rate each half period
+     * lands on three or four frames, so the duty cycle wobbles by one frame
+     * while the rate itself stays exactly 10 Hz. */
+    { "f_strobe", "Strobe 10 Hz white", 0, 2, {
+        fill(50, pal(FxColor::White)),
+        fill(50, lit(0, 0, 0)),
+    } },
+
     { "f_knight", "Knight Rider", 0, 2,
       { KNIGHT_STEP(0.0f, 1.0f), KNIGHT_STEP(1.0f, 0.0f) } },
 

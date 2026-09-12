@@ -4,6 +4,7 @@
 #include "net_internal.h"
 #include "tasks.hpp"
 #include "crash_log.h"
+#include "stats.h"
 #include "net_services.h"
 
 #include <cstring>
@@ -368,6 +369,28 @@ esp_err_t hSysinfoGet(httpd_req_t* req)
     msg.uptime_s = static_cast<uint32_t>(esp_timer_get_time() / 1000000);
     strlcpy(msg.crash_log, CrashLog::summary(), sizeof(msg.crash_log));
 
+    Stats::Counters counters;
+    Stats::get(&counters);
+    const char* const why = Stats::notStoredWhy();
+    msg.has_stats = true;
+    msg.stats.boots = counters.boots;
+    msg.stats.powered_15s = counters.powered_15s;
+    msg.stats.wifi_15s = counters.wifi_15s;
+    msg.stats.brake = counters.brake;
+    msg.stats.left_uses = counters.left_uses;
+    msg.stats.left_flashes = counters.left_flashes;
+    msg.stats.right_uses = counters.right_uses;
+    msg.stats.right_flashes = counters.right_flashes;
+    msg.stats.hazard_uses = counters.hazard_uses;
+    msg.stats.hazard_flashes = counters.hazard_flashes;
+    msg.stats.aux = counters.aux;
+    msg.stats.anomalies = counters.anomalies;
+    msg.stats.not_stored = (nullptr != why);
+    if (msg.stats.not_stored)
+    {
+        strlcpy(msg.stats.not_stored_why, why, sizeof(msg.stats.not_stored_why));
+    }
+
     for (int i = 0; i < m_n_pins && msg.pins_count < ARRAY_LEN(msg.pins); i++)
     {
         motolights_PinInfo& p = msg.pins[msg.pins_count++];
@@ -420,6 +443,21 @@ esp_err_t hCommandPost(httpd_req_t* req)
     case motolights_Command_override_tag:
         RenderCore::setOverride(cmd.cmd.override);
         break;
+    case motolights_Command_reset_stats_tag:
+    {
+        if (!cmd.cmd.reset_stats)
+        {
+            break;              /* presence alone is not a request */
+        }
+        /* The housekeeping task does the actual reset, once nothing is being
+         * signalled; this waits for it so the page learns the real outcome. */
+        const char* why = "";
+        if (!Stats::reset(Stats::RESET_WAIT_MS, &why))
+        {
+            return sendError(req, "503 Service Unavailable", why);
+        }
+        return sendOk(req);
+    }
     case motolights_Command_restore_defaults_tag:
     {
         if (!cmd.cmd.restore_defaults)

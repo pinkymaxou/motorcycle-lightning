@@ -19,7 +19,7 @@ exists only behind the config WiFi, which is off at boot.
 | Path | What |
 |---|---|
 | `firmware/main/` | boot sequence — read it before changing startup order |
-| `firmware/components/` | one concern per component; `fx`, `event_arbiter`, `input_conditioner` are host-testable |
+| `firmware/components/` | one concern per component; `fx`, `event_arbiter`, `input_conditioner` and the `stats` record/store are host-testable |
 | `firmware/components/tasks/include/tasks.hpp` | every task's name, stack, priority and core |
 | `firmware/webui/` | `index.html` + `style.css` + `app.js`, inlined into one asset at build time |
 | `firmware/docs/programming-rules.md` | the non-negotiables (numbered rules) |
